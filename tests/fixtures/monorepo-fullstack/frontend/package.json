@@ -1,0 +1,8 @@
+{
+  "name": "frontend",
+  "dependencies": {
+    "@fixture/shared": "workspace:*",
+    "react": "^19.0.0",
+    "vite": "^7.0.0"
+  }
+}

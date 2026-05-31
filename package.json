@@ -1,0 +1,97 @@
+{
+  "name": "repo-mapper-cli",
+  "version": "0.1.0",
+  "description": "Local MCP server that gives AI coding agents on-demand, always-fresh structural queries over your codebase.",
+  "type": "module",
+  "packageManager": "pnpm@10.12.4",
+  "bin": {
+    "repomapper": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier . --write",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm check",
+    "changeset": "changeset",
+    "release": "pnpm build && changeset publish"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "code-intelligence",
+    "claude-code",
+    "cursor",
+    "codex",
+    "cli",
+    "ai-agent",
+    "repository-map",
+    "developer-tools"
+  ],
+  "author": "WangZhongWu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Congmoow/RepoMapper.git"
+  },
+  "homepage": "https://github.com/Congmoow/RepoMapper#readme",
+  "bugs": {
+    "url": "https://github.com/Congmoow/RepoMapper/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chokidar": "^5.0.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.0",
+    "debug": "^4.4.1",
+    "fast-glob": "^3.3.3",
+    "fs-extra": "^11.3.0",
+    "ignore": "^7.0.5",
+    "jsonc-parser": "^3.3.1",
+    "ora": "^9.0.0",
+    "picocolors": "^1.1.1",
+    "picomatch": "^4.0.4",
+    "smol-toml": "^1.4.2",
+    "yaml": "^2.8.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5",
+    "@types/debug": "^4.1.12",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.15.0",
+    "@types/picomatch": "^4.0.3",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.30.0",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
+    "simple-git-hooks": "^2.13.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.35.1",
+    "vitest": "^3.2.4"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx,js,mjs}": [
+      "eslint --fix"
+    ]
+  }
+}

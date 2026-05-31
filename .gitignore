@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.claude/
+.next
+target
+CODEMAP.md
+repomapper.config.json
+*.log
+.DS_Store
