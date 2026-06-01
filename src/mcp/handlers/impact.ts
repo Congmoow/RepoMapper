@@ -5,6 +5,7 @@ interface ImpactArgs {
   paths: string[];
   depth?: number | undefined;
   minDepth?: number | undefined;
+  limit?: number | undefined;
 }
 
 export async function handleImpact(
@@ -15,6 +16,9 @@ export async function handleImpact(
   depth: number;
   minDepth: number;
   impacted: string[];
+  totalImpacted: number;
+  truncated: boolean;
+  levelTotals: Record<number, number>;
   levels: Record<number, string[]>;
   missingRoots: string[];
   suggestions: Record<string, string[]>;
@@ -43,6 +47,7 @@ export async function handleImpact(
   const impacted = new Set<string>();
   let frontier = traversalRoots;
   const levels: Record<number, string[]> = {};
+  const levelTotals: Record<number, number> = {};
 
   for (let level = 1; level <= depth; level += 1) {
     const next = new Set<string>();
@@ -59,6 +64,7 @@ export async function handleImpact(
     const values = sortByHubWeight([...next], graph.importedBy);
     if (level >= minDepth) {
       levels[level] = values;
+      levelTotals[level] = values.length;
       for (const filePath of values) {
         impacted.add(filePath);
       }
@@ -70,16 +76,31 @@ export async function handleImpact(
     }
   }
 
+  const allImpacted = sortByHubWeight([...impacted], graph.importedBy);
+  const limit = normalizeLimit(args.limit);
+  const pagedImpacted = limit === undefined ? allImpacted : allImpacted.slice(0, limit);
+
   return {
     roots,
     depth,
     minDepth,
-    impacted: sortByHubWeight([...impacted], graph.importedBy),
+    impacted: pagedImpacted,
+    totalImpacted: allImpacted.length,
+    truncated: pagedImpacted.length < allImpacted.length,
+    levelTotals,
     levels,
     missingRoots,
     suggestions,
     warnings,
   };
+}
+
+function normalizeLimit(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value) || value < 1) {
+    return undefined;
+  }
+
+  return Math.floor(value);
 }
 
 function normalizeDepth(value: number | undefined, fallback: number): number {

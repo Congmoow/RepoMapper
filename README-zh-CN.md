@@ -14,6 +14,8 @@ RepoMapper 在本地运行，索引代码库结构，并通过 MCP 暴露给 Cla
 ![Vitest](https://img.shields.io/badge/Vitest-3.x-6e9f18?logo=vitest&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+![RepoMapper CLI 使用说明](./images/instruction.png)
+
 ## 为什么需要 RepoMapper？
 
 AI 编程助手在执行修改任务前，经常会先重新发现同一批结构信息：脚本命令、入口文件、重要文件、目录形状、imports 和可能的影响面。这些探索会消耗 token 和时间，并且在任务切换后容易重复发生。
@@ -62,13 +64,15 @@ repomapper serve . --mcp
 - `repomapper_context`：项目概览，包括项目名、技术栈、features、入口文件、重要文件和 scripts。
 - `repomapper_tree`：按路径和深度返回目录树。
 - `repomapper_search`：按关键词或类 glob 模式搜索文件、目录或符号。
-- `repomapper_file_info`：返回单文件 exports、内部 symbols、imports、imported-by，以及 TS/JS 导出函数的 `callsByExport`。
-- `repomapper_imports`：返回某文件 import 了哪些文件，也就是 fan-out。
-- `repomapper_dependents`：返回哪些文件 import 了某文件，也就是 fan-in。
+- `repomapper_grep`：按字面量或正则搜索文件内容，可用 glob 和 limit 限定范围。
+- `repomapper_file_info`：返回单文件 exports、内部 symbols、imports、imported-by，以及带调用点行号的 TS/JS 导出函数 `callsByExport`。
+- `repomapper_imports`：返回某文件 import 了哪些文件，也就是 fan-out；支持 `limit` 和 `offset`。
+- `repomapper_dependents`：返回哪些文件 import 了某文件，也就是 fan-in；支持 `limit` 和 `offset`。
 - `repomapper_hubs`：返回被最多文件依赖的核心模块。
-- `repomapper_impact`：返回变更文件的直接和传递反向依赖影响范围，支持 `minDepth` 隐藏直接影响层。
+- `repomapper_impact`：返回变更文件的直接和传递反向依赖影响范围，包含总量与截断信息，支持 `minDepth` 和 `limit`。
+- `repomapper_path_between`：返回从变更文件到目标文件的最短依赖传播链。
 - `repomapper_refresh`：显式刷新 watcher 待处理变更，并返回刷新后的状态。
-- `repomapper_status`：返回索引状态、统计数据、新鲜度标记和 pending watcher 变更。
+- `repomapper_status`：返回索引状态、统计数据、新鲜度标记、pending watcher 变更和可程序化判断的 `nextAction`。
 
 也可以手动添加 MCP JSON 配置：
 
@@ -94,7 +98,7 @@ repomapper serve . --mcp
 
 ## Agent 使用建议
 
-在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是 grep 或逐个 read 文件。
+在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是逐个 read 文件；代码内容搜索应使用 `repomapper_grep`。
 
 可选的 `agents` 命令会生成 `AGENTS.md` 操作指南。它不是静态项目地图，只记录面向 agent 的仓库导航和工作规则。
 

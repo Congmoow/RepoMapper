@@ -10,6 +10,7 @@ import {
   type CallGraph,
 } from '../core/call-graph.js';
 import { loadConfig } from '../core/config.js';
+import { ContentIndex } from '../core/content-index.js';
 import { detectRepository } from '../core/detector.js';
 import {
   buildImportGraph,
@@ -31,6 +32,27 @@ export interface PendingChange {
   event: DirtyEvent;
 }
 
+/** Stable, machine-readable hint for what an agent should do next. */
+export type NextAction = 'none' | 'call_refresh';
+
+export type CacheStatus = {
+  indexedFiles: number;
+  symbols: number;
+  edges: number;
+  callEdges: number;
+  lastFullScan: string | null;
+  lastUpdated: string | null;
+  pendingChanges: PendingChange[];
+  watcherActive: boolean;
+  fresh: boolean;
+  needsRefresh: boolean;
+  refreshInProgress: boolean;
+  /** Machine-readable enum; switch on this. */
+  nextAction: NextAction;
+  /** Human-readable explanation, or null when nextAction is 'none'. */
+  nextActionMessage: string | null;
+};
+
 interface ProjectCacheOptions {
   watch?: boolean;
 }
@@ -42,6 +64,7 @@ export class ProjectCache {
   private importGraph: ImportGraph | null = null;
   private callGraph: CallGraph | null = null;
   private symbols: FileSymbols[] | null = null;
+  private readonly contentIndex: ContentIndex;
   private dirtyFiles = new Map<string, DirtyEvent>();
   private lastFullScan = 0;
   private lastUpdated = 0;
@@ -56,6 +79,7 @@ export class ProjectCache {
     private readonly options: ProjectCacheOptions = {},
   ) {
     this.rootPath = path.resolve(rootPath);
+    this.contentIndex = new ContentIndex(this.rootPath);
   }
 
   async ensureReady(): Promise<void> {
@@ -177,26 +201,17 @@ export class ProjectCache {
     return this.callGraph;
   }
 
+  getContentIndex(): ContentIndex {
+    return this.contentIndex;
+  }
+
   getPendingChanges(): PendingChange[] {
     return [...this.dirtyFiles.entries()]
       .map(([filePath, event]) => ({ path: filePath, event }))
       .sort((left, right) => left.path.localeCompare(right.path));
   }
 
-  getStatus(): {
-    indexedFiles: number;
-    symbols: number;
-    edges: number;
-    callEdges: number;
-    lastFullScan: string | null;
-    lastUpdated: string | null;
-    pendingChanges: PendingChange[];
-    watcherActive: boolean;
-    fresh: boolean;
-    needsRefresh: boolean;
-    refreshInProgress: boolean;
-    nextAction: string | null;
-  } {
+  getStatus(): CacheStatus {
     const pendingChanges = this.getPendingChanges();
     const refreshInProgress = this.refreshPromise !== null;
     const needsRefresh = pendingChanges.length > 0;
@@ -215,7 +230,10 @@ export class ProjectCache {
       fresh: !needsRefresh && !refreshInProgress,
       needsRefresh,
       refreshInProgress,
-      nextAction: needsRefresh ? '调用 repomapper_refresh 后再信任索引结果。' : null,
+      nextAction: needsRefresh ? 'call_refresh' : 'none',
+      nextActionMessage: needsRefresh
+        ? 'Index has pending changes; call repomapper_refresh before trusting results. 索引存在待处理变更，调用 repomapper_refresh 后再信任结果。'
+        : null,
     };
   }
 
@@ -241,6 +259,8 @@ export class ProjectCache {
     this.callGraph = callGraph;
     this.lastFullScan = scannedAt;
     this.lastUpdated = scannedAt;
+    // File set may have changed; drop all cached file contents so grep re-reads.
+    this.contentIndex.clear();
   }
 
   private async refreshChangedFiles(files: string[]): Promise<void> {
@@ -259,6 +279,8 @@ export class ProjectCache {
 
       nextEdges.push(...(await extractImportEdgesForFile(this.rootPath, file, scan)));
       await this.replaceSymbolsForFile(file);
+      // Content changed; drop cached lines so next grep re-reads this file.
+      this.contentIndex.invalidate(file);
     }
 
     this.importGraph = buildImportGraphFromEdges(nextEdges);

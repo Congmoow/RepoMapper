@@ -14,6 +14,8 @@ RepoMapper runs entirely on your machine. It does not require an AI API key and 
 ![Vitest](https://img.shields.io/badge/Vitest-3.x-6e9f18?logo=vitest&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
+![RepoMapper CLI 使用说明](./images/instruction.png)
+
 ## Why RepoMapper
 
 AI coding agents often rediscover the same repository facts before making a change: package scripts, entry points, important files, directory shape, imports, dependents, and likely blast radius. That exploration burns tokens and time, and it repeats whenever the task context changes.
@@ -59,18 +61,20 @@ repomapper serve . --mcp
 
 Available tools:
 
-| Tool                    | Purpose                                                                                                         |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `repomapper_context`    | Project overview: name, tech stack, features, entry points, important files, scripts, and served-root warnings. |
-| `repomapper_tree`       | Bounded directory tree by path and depth.                                                                       |
-| `repomapper_search`     | Search files, directories, symbols, or all result types with token matching and glob-like patterns.             |
-| `repomapper_file_info`  | File exports, internal symbols, imports, imported-by files, and TS/JS `callsByExport` data.                     |
-| `repomapper_imports`    | Direct fan-out dependencies for a file.                                                                         |
-| `repomapper_dependents` | Direct fan-in dependents for a file.                                                                            |
-| `repomapper_hubs`       | Files with the most dependents.                                                                                 |
-| `repomapper_impact`     | Direct and transitive reverse-dependency impact for changed files.                                              |
-| `repomapper_refresh`    | Explicitly wait for pending watcher changes and return refreshed status.                                        |
-| `repomapper_status`     | Index status, graph statistics, freshness, and pending watcher changes.                                         |
+| Tool                      | Purpose                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `repomapper_context`      | Project overview: name, tech stack, features, entry points, important files, scripts, and served-root warnings.  |
+| `repomapper_tree`         | Bounded directory tree by path and depth.                                                                        |
+| `repomapper_search`       | Search files, directories, symbols, or all result types with token matching and glob-like patterns.              |
+| `repomapper_grep`         | Search file contents by literal text or regex, with optional glob scoping and match limits.                      |
+| `repomapper_file_info`    | File exports, internal symbols, imports, imported-by files, and TS/JS `callsByExport` data with call-site lines. |
+| `repomapper_imports`      | Direct fan-out dependencies for a file, with optional `limit` and `offset`.                                      |
+| `repomapper_dependents`   | Direct fan-in dependents for a file, with optional `limit` and `offset`.                                         |
+| `repomapper_hubs`         | Files with the most dependents.                                                                                  |
+| `repomapper_impact`       | Direct and transitive reverse-dependency impact for changed files, including total and truncation metadata.      |
+| `repomapper_path_between` | Shortest dependency chain showing how a change in one file can propagate to another.                             |
+| `repomapper_refresh`      | Explicitly wait for pending watcher changes and return refreshed status.                                         |
+| `repomapper_status`       | Index status, graph statistics, freshness, pending watcher changes, and machine-readable `nextAction`.           |
 
 Manual MCP configuration:
 
@@ -96,7 +100,7 @@ Manual MCP configuration:
 
 ## Agent Usage
 
-In MCP mode, agents receive RepoMapper server instructions during initialization. Structural questions should prefer RepoMapper tools over ad hoc grep or repeated file reads.
+In MCP mode, agents receive RepoMapper server instructions during initialization. Structural questions should prefer RepoMapper tools over ad hoc grep or repeated file reads. Content searches should use `repomapper_grep`.
 
 The optional `agents` command can generate an `AGENTS.md` guide. It is not a static project map; it records agent-facing navigation notes and working rules:
 

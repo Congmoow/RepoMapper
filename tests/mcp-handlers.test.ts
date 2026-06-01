@@ -89,8 +89,8 @@ describe('MCP handlers', () => {
     expect(result.callsByExport.helper).toBeDefined();
     expect(result.callsByExport.helper?.calledBy).toEqual(
       expect.arrayContaining([
-        { file: 'src/main.ts', symbol: 'main' },
-        { file: 'src/components/Button.ts', symbol: 'Button' },
+        expect.objectContaining({ file: 'src/main.ts', symbol: 'main', line: 5 }),
+        expect.objectContaining({ file: 'src/components/Button.ts', symbol: 'Button', line: 3 }),
       ]),
     );
   });
@@ -110,14 +110,24 @@ describe('MCP handlers', () => {
     const cache = new ProjectCache(fixtureRoot, { watch: false });
 
     const imports = await handleImports(cache, { path: 'src/main.ts' });
+    const pagedImports = await handleImports(cache, { path: 'src/main.ts', limit: 1 });
     const dependents = await handleDependents(cache, { path: 'src/utils.ts' });
+    const pagedDependents = await handleDependents(cache, {
+      path: 'src/utils.ts',
+      limit: 1,
+      offset: 1,
+    });
 
     expect(imports.imports).toEqual(
       expect.arrayContaining(['src/utils.ts', 'src/components/Button.ts']),
     );
+    expect(imports).toMatchObject({ count: 2, total: 2, offset: 0, truncated: false });
+    expect(pagedImports).toMatchObject({ count: 1, total: 2, offset: 0, truncated: true });
     expect(dependents.dependents).toEqual(
       expect.arrayContaining(['src/main.ts', 'src/components/Button.ts']),
     );
+    expect(dependents).toMatchObject({ count: 2, total: 2, offset: 0, truncated: false });
+    expect(pagedDependents).toMatchObject({ count: 1, total: 2, offset: 1, truncated: false });
   });
 
   test('repomapper_hubs 返回依赖最多的模块', async () => {
@@ -136,6 +146,9 @@ describe('MCP handlers', () => {
     expect(result.impacted).toEqual(
       expect.arrayContaining(['src/main.ts', 'src/components/Button.ts']),
     );
+    expect(result.totalImpacted).toBe(2);
+    expect(result.truncated).toBe(false);
+    expect(result.levelTotals[1]).toBe(2);
     expect(result.levels[1]).toEqual(
       expect.arrayContaining(['src/main.ts', 'src/components/Button.ts']),
     );
@@ -149,6 +162,8 @@ describe('MCP handlers', () => {
     expect(result.minDepth).toBe(2);
     expect(result.levels[1]).toBeUndefined();
     expect(result.impacted).toEqual(['src/top.ts']);
+    expect(result.totalImpacted).toBe(1);
+    expect(result.levelTotals[2]).toBe(1);
     expect(result.levels[2]).toEqual(['src/top.ts']);
   });
 
@@ -165,7 +180,8 @@ describe('MCP handlers', () => {
     expect(result.pendingChanges).toEqual([{ path: 'src/utils.ts', event: 'change' }]);
     expect(result.needsRefresh).toBe(true);
     expect(result.fresh).toBe(false);
-    expect(result.nextAction).toContain('repomapper_refresh');
+    expect(result.nextAction).toBe('call_refresh');
+    expect(result.nextActionMessage).toContain('repomapper_refresh');
   });
 
   test('repomapper_search 支持 all 搜索和内部方法符号', async () => {
@@ -239,6 +255,8 @@ describe('MCP handlers', () => {
     expect(result.pendingChanges).toEqual([]);
     expect(result.needsRefresh).toBe(false);
     expect(result.fresh).toBe(true);
+    expect(result.nextAction).toBe('none');
+    expect(result.nextActionMessage).toBeNull();
   });
 
   test('serve 子目录时 context 返回项目根提示和可用技术栈', async () => {

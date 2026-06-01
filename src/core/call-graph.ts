@@ -13,6 +13,8 @@ export interface SymbolRef {
 export interface CallEdge {
   from: SymbolRef;
   to: SymbolRef;
+  /** 1-based line of the call site inside the `from` function body, if known. */
+  line?: number | undefined;
 }
 
 export interface CallGraph {
@@ -73,14 +75,17 @@ export function extractCallEdgesFromContent(
   for (const exportedFunction of exportedFunctions) {
     for (const [localName, target] of importedSymbols.entries()) {
       const pattern = new RegExp(`\\b${escapeRegex(localName)}(?:\\s*\\(|\\s*\\.\\s*\\w+\\s*\\()`);
+      const matchInBody = pattern.exec(exportedFunction.body);
 
-      if (!pattern.test(exportedFunction.body)) {
+      if (matchInBody === null) {
         continue;
       }
 
+      const line = lineNumberAt(content, exportedFunction.start + matchInBody.index);
       const edge: CallEdge = {
         from: { file, symbol: exportedFunction.name },
         to: target,
+        line,
       };
       const key = `${symbolKey(edge.from)}->${symbolKey(edge.to)}`;
 
@@ -121,6 +126,8 @@ export function symbolKey(ref: SymbolRef): string {
 interface ExportedFunctionBody {
   name: string;
   body: string;
+  /** Absolute offset in the file where `body` begins. */
+  start: number;
 }
 
 function extractExportedFunctionBodies(content: string): ExportedFunctionBody[] {
@@ -140,6 +147,7 @@ function extractExportedDeclarations(content: string): ExportedFunctionBody[] {
       results.push({
         name: match[1]!,
         body: content.slice(match.index, openBraceIndex) + body.body,
+        start: match.index,
       });
       declarationPattern.lastIndex = body.endIndex;
     }
@@ -162,6 +170,7 @@ function extractExportedConstFunctions(content: string): ExportedFunctionBody[] 
       results.push({
         name: (match[1] ?? match[2])!,
         body: content.slice(match.index, openBraceIndex) + body.body,
+        start: match.index,
       });
       constPattern.lastIndex = body.endIndex;
     }
@@ -243,4 +252,8 @@ function sortEdges(edges: CallEdge[]): void {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function lineNumberAt(content: string, index: number): number {
+  return content.slice(0, index).split(/\r?\n/).length;
 }

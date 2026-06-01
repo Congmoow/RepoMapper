@@ -1,9 +1,16 @@
 import type { ProjectCache } from '../cache.js';
-import { symbolKey, type SymbolRef } from '../../core/call-graph.js';
+import { symbolKey } from '../../core/call-graph.js';
 import { resolveRepoPath } from '../../core/path-resolver.js';
 
 interface FileInfoArgs {
   path: string;
+}
+
+interface CallSiteRef {
+  file: string;
+  symbol: string;
+  /** 1-based line of the call site in the calling function's file, if known. */
+  line?: number;
 }
 
 export async function handleFileInfo(
@@ -23,7 +30,7 @@ export async function handleFileInfo(
   }>;
   imports: string[];
   importedBy: string[];
-  callsByExport: Record<string, { calls: SymbolRef[]; calledBy: SymbolRef[] }>;
+  callsByExport: Record<string, { calls: CallSiteRef[]; calledBy: CallSiteRef[] }>;
   suggestions: string[];
   warnings: string[];
   limitation?: string;
@@ -60,8 +67,22 @@ export async function handleFileInfo(
         return [
           symbol.name,
           {
-            calls: sortSymbolRefs((callGraph.calls.get(key) ?? []).map((edge) => edge.to)),
-            calledBy: sortSymbolRefs((callGraph.calledBy.get(key) ?? []).map((edge) => edge.from)),
+            // Where this export calls into other files (line is in THIS file).
+            calls: sortCallSites(
+              (callGraph.calls.get(key) ?? []).map((edge) => ({
+                file: edge.to.file,
+                symbol: edge.to.symbol,
+                ...(edge.line === undefined ? {} : { line: edge.line }),
+              })),
+            ),
+            // Where other functions call this export (line is in the CALLER's file).
+            calledBy: sortCallSites(
+              (callGraph.calledBy.get(key) ?? []).map((edge) => ({
+                file: edge.from.file,
+                symbol: edge.from.symbol,
+                ...(edge.line === undefined ? {} : { line: edge.line }),
+              })),
+            ),
           },
         ];
       }),
@@ -81,8 +102,17 @@ function isTsJsFile(filePath: string): boolean {
   return /\.[cm]?[jt]sx?$/.test(filePath);
 }
 
-function sortSymbolRefs(refs: SymbolRef[]): SymbolRef[] {
-  return [...refs].sort(
-    (left, right) => left.file.localeCompare(right.file) || left.symbol.localeCompare(right.symbol),
-  );
+function sortCallSites(refs: CallSiteRef[]): CallSiteRef[] {
+  return [...refs]
+    .map((ref) => ({
+      file: ref.file,
+      symbol: ref.symbol,
+      ...(ref.line === undefined ? {} : { line: ref.line }),
+    }))
+    .sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) ||
+        left.symbol.localeCompare(right.symbol) ||
+        (left.line ?? 0) - (right.line ?? 0),
+    );
 }

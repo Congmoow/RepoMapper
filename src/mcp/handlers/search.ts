@@ -1,6 +1,5 @@
-import picomatch from 'picomatch';
-
 import type { ProjectCache } from '../cache.js';
+import { createPathMatcher } from '../../core/path-matcher.js';
 
 type SearchKind = 'file' | 'dir' | 'symbol' | 'all';
 
@@ -28,7 +27,7 @@ export async function handleSearch(
   const kind = args.kind ?? 'file';
   const pattern = args.pattern;
   const limit = normalizeLimit(args.limit);
-  const matcher = createMatcher(pattern);
+  const matcher = createPathMatcher(pattern);
   const scan = cache.getScan();
   const matches: SearchMatch[] = [];
 
@@ -71,30 +70,10 @@ export async function handleSearch(
   };
 }
 
-function createMatcher(pattern: string): (value: string) => boolean {
-  const normalizedPattern = pattern.toLowerCase();
-
-  if (isGlobPattern(pattern)) {
-    const matcher = picomatch(pattern, { nocase: true });
-    const basenameMatcher = picomatch(`**/${pattern}`, { nocase: true });
-    return (value) => matcher(value) || basenameMatcher(value);
-  }
-
-  const tokens = normalizedPattern.split(/\s+/).filter(Boolean);
-  return (value) => {
-    const normalizedValue = value.toLowerCase();
-    return tokens.every((token) => normalizedValue.includes(token));
-  };
-}
-
 function normalizeLimit(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value) || value < 1) {
     return 100;
   }
 
   return Math.floor(value);
-}
-
-function isGlobPattern(pattern: string): boolean {
-  return /[*?[\]{}()!+@]/.test(pattern);
 }

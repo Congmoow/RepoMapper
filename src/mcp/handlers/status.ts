@@ -1,19 +1,6 @@
-import type { ProjectCache } from '../cache.js';
+import type { CacheStatus, ProjectCache } from '../cache.js';
 
-export async function handleStatus(cache: ProjectCache): Promise<{
-  indexedFiles: number;
-  symbols: number;
-  edges: number;
-  callEdges: number;
-  lastFullScan: string | null;
-  lastUpdated: string | null;
-  pendingChanges: Array<{ path: string; event: string }>;
-  watcherActive: boolean;
-  fresh: boolean;
-  needsRefresh: boolean;
-  refreshInProgress: boolean;
-  nextAction: string | null;
-}> {
+export async function handleStatus(cache: ProjectCache): Promise<CacheStatus> {
   await cache.ensureReady();
   return cache.getStatus();
 }

@@ -28,14 +28,16 @@ describe('buildCallGraph', () => {
 
     expect(callGraph.calledBy.get(symbolKey({ file: 'src/utils.ts', symbol: 'helper' }))).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           from: { file: 'src/main.ts', symbol: 'main' },
           to: { file: 'src/utils.ts', symbol: 'helper' },
-        },
-        {
+          line: 5,
+        }),
+        expect.objectContaining({
           from: { file: 'src/components/Button.ts', symbol: 'Button' },
           to: { file: 'src/utils.ts', symbol: 'helper' },
-        },
+          line: 3,
+        }),
       ]),
     );
     expect(
@@ -44,6 +46,7 @@ describe('buildCallGraph', () => {
       {
         from: { file: 'src/main.ts', symbol: 'main' },
         to: { file: 'src/components/Button.ts', symbol: 'Button' },
+        line: 5,
       },
     ]);
   });
@@ -67,14 +70,16 @@ describe('buildCallGraph', () => {
 
     expect(callGraph.calls.get(symbolKey({ file: 'src/consumer.ts', symbol: 'load' }))).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           from: { file: 'src/consumer.ts', symbol: 'load' },
           to: { file: 'src/api.ts', symbol: 'request' },
-        },
-        {
+          line: 4,
+        }),
+        expect.objectContaining({
           from: { file: 'src/consumer.ts', symbol: 'load' },
           to: { file: 'src/api.ts', symbol: 'client' },
-        },
+          line: 4,
+        }),
       ]),
     );
   });
