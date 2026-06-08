@@ -4,16 +4,25 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { ProjectCache } from './cache.js';
 import { handleContext } from './handlers/context.js';
-import { handleFileInfo } from './handlers/file-info.js';
+import { handleFileInfo, handleFileInfoBatch } from './handlers/file-info.js';
 import { handleGrep } from './handlers/grep.js';
 import { handleHubs } from './handlers/hubs.js';
 import { handleImpact } from './handlers/impact.js';
 import { handleDependents, handleImports } from './handlers/imports.js';
 import { handlePathBetween } from './handlers/path-between.js';
+import { handleReadFile } from './handlers/read-file.js';
 import { handleRefresh } from './handlers/refresh.js';
 import { handleSearch } from './handlers/search.js';
 import { handleStatus } from './handlers/status.js';
 import { handleTree } from './handlers/tree.js';
+
+const fileInfoFieldSchema = z.enum([
+  'exports',
+  'symbols',
+  'imports',
+  'importedBy',
+  'callsByExport',
+]);
 
 export function registerRepoMapperTools(server: McpServer, cache: ProjectCache): void {
   server.registerTool(
@@ -30,7 +39,8 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     'repomapper_tree',
     {
       title: 'RepoMapper directory tree / 目录树',
-      description: 'Return the directory tree of the repo or a subdirectory. 返回仓库或指定子目录的目录树。',
+      description:
+        'Return a bounded directory tree plus structured entries. 返回仓库或指定子目录的目录树和结构化条目。',
       inputSchema: {
         path: z.string().optional().describe('Optional subdirectory path; defaults to repo root. 可选子目录路径，默认仓库根目录。'),
         depth: z.number().int().positive().optional().describe('Max relative depth, default 3. 最大相对深度，默认 3。'),
@@ -44,7 +54,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper search / 结构搜索',
       description:
-        'Search files, directories or exported symbols by picomatch glob or keyword. For searching file CONTENT, use repomapper_grep instead. 按 glob 或关键词搜索文件、目录或符号；搜代码内容请用 repomapper_grep。',
+        'Search files, directories or exported symbols by picomatch glob or keyword. For symbol results, set contextLines to include definition snippets. For file CONTENT, use repomapper_grep. 按 glob 或关键词搜索文件、目录或符号；符号结果可用 contextLines 返回定义片段；搜代码内容请用 repomapper_grep。',
       inputSchema: {
         pattern: z.string().min(1).describe('Glob-like pattern or keyword. 类 glob 模式或关键词。'),
         kind: z
@@ -52,6 +62,13 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
           .optional()
           .describe('Target type, default file; all mixes files, dirs and symbols. 搜索目标类型，默认 file；all 混合返回。'),
         limit: z.number().int().positive().optional().describe('Max results, default 100. 最多返回结果数量，默认 100。'),
+        offset: z.number().int().min(0).optional().describe('Skip first N results for paging, default 0. 分页时跳过前 N 条，默认 0。'),
+        contextLines: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('For symbol matches, include up to 20 lines before and after the definition. 符号命中返回定义前后最多 20 行。'),
       },
     },
     async (args) => toolResult(await handleSearch(cache, args)),
@@ -62,7 +79,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper content search / 内容搜索',
       description:
-        'Search file CONTENT by literal or regex; returns path + line + matching line. Use for strings, constants, env vars, routes, TODOs — anything not locatable by filename or symbol. 在文件内容中搜索字面量或正则，返回 path+line+匹配行。',
+        'Search file CONTENT by literal or regex; returns path + line + matching line, optionally with context lines. 在文件内容中搜索字面量或正则，返回 path+line+匹配行，可选返回上下文行。',
       inputSchema: {
         pattern: z.string().min(1).describe('Literal substring or regular expression to search. 要搜索的字面量子串或正则。'),
         regex: z.boolean().optional().describe('Treat pattern as regex; default literal substring. 为 true 时按正则匹配，默认字面量。'),
@@ -75,9 +92,31 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
           .optional()
           .describe('Optional picomatch glob to restrict files, e.g. src/**/*.ts. 可选 glob，仅在匹配文件中搜索。'),
         limit: z.number().int().positive().optional().describe('Max matches, default 100. 最多返回匹配数，默认 100。'),
+        contextLines: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Include up to 20 lines before and after each match. 返回每个匹配项前后最多 20 行上下文。'),
       },
     },
     async (args) => toolResult(await handleGrep(cache, args)),
+  );
+
+  server.registerTool(
+    'repomapper_read_file',
+    {
+      title: 'RepoMapper read indexed text file / 读取已索引文本文件',
+      description:
+        'Read an indexed repo-relative text file, optionally by line range. Does not read arbitrary absolute paths. 读取已索引的仓库相对文本文件，可指定行范围；不会读取任意绝对路径。',
+      inputSchema: {
+        path: z.string().min(1).describe('Repo-relative file path. 仓库相对文件路径。'),
+        startLine: z.number().int().positive().optional().describe('First 1-based line to return. 起始行号，从 1 开始。'),
+        endLine: z.number().int().positive().optional().describe('Last 1-based line to return. 结束行号，从 1 开始。'),
+        maxBytes: z.number().int().positive().optional().describe('Maximum returned UTF-8 bytes. 最多返回的 UTF-8 字节数。'),
+      },
+    },
+    async (args) => toolResult(await handleReadFile(cache, args)),
   );
 
   server.registerTool(
@@ -85,12 +124,33 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper file detail / 文件详情',
       description:
-        'Return a file\'s exported symbols, internal symbols (with line numbers), file-level dependencies/dependents, and calls/calledBy for TS/JS exported functions with call-site line numbers. 返回文件的导出/内部符号（含行号）、文件级依赖/反向依赖，以及 TS/JS 导出函数 calls/calledBy（含调用点行号）。',
+        'Return a file\'s symbols, dependencies/dependents and TS/JS calls/calledBy. callsByExport also includes best-effort importCallSites for imported usages. Use fields to reduce payload size. 返回文件符号、依赖/反向依赖和 TS/JS 调用关系；callsByExport 还包含 best-effort 导入调用点；可用 fields 裁剪返回体积。',
       inputSchema: {
         path: z.string().min(1).describe('Repo-relative file path. 仓库相对文件路径。'),
+        fields: z
+          .array(fileInfoFieldSchema)
+          .optional()
+          .describe('Optional fields to return. 可选返回字段。'),
       },
     },
     async (args) => toolResult(await handleFileInfo(cache, args)),
+  );
+
+  server.registerTool(
+    'repomapper_file_info_batch',
+    {
+      title: 'RepoMapper batch file details / 批量文件详情',
+      description:
+        'Return file info for multiple repo-relative paths with one refresh, optionally field-selected. 一次刷新后批量返回多个文件详情，可用 fields 裁剪字段。',
+      inputSchema: {
+        paths: z.array(z.string().min(1)).min(1).describe('Repo-relative file paths. 仓库相对文件路径列表。'),
+        fields: z
+          .array(fileInfoFieldSchema)
+          .optional()
+          .describe('Optional fields to return for each file. 每个文件可选返回字段。'),
+      },
+    },
+    async (args) => toolResult(await handleFileInfoBatch(cache, args)),
   );
 
   server.registerTool(
@@ -154,6 +214,10 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
           .positive()
           .optional()
           .describe('Max items in flat impacted list; default no truncation, levels/levelTotals unaffected. 扁平 impacted 列表上限，默认不截断。'),
+        includePaths: z
+          .boolean()
+          .optional()
+          .describe('Include one shortest reverse-dependency path for each impacted file. 为每个受影响文件返回一条最短反向依赖路径。'),
       },
     },
     async (args) => toolResult(await handleImpact(cache, args)),
@@ -164,7 +228,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper dependency chain / 依赖链',
       description:
-        'Find how a change in `from` propagates to `to`, returning shortest dependency chains (along importedBy). Answers "why does changing A affect B, and through what path". 查找 from 的变更如何传导到 to，返回最短依赖链。',
+        'Find how a change in `from` propagates to `to`, returning shortest reverse-dependency chains (along importedBy). If you want forward imports, use repomapper_imports. 查找 from 的变更如何传导到 to，返回最短反向依赖传播链；若要看正向 import，请用 repomapper_imports。',
       inputSchema: {
         from: z.string().min(1).describe('Repo-relative path of the change origin. 变更起点的仓库相对文件路径。'),
         to: z.string().min(1).describe('Repo-relative path of the affected target. 受影响终点的仓库相对文件路径。'),
@@ -180,7 +244,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper refresh index / 刷新索引',
       description:
-        'Explicitly apply pending watcher changes and return the refreshed index status. 显式刷新 watcher 待处理变更，并返回刷新后的索引状态。',
+        'Explicitly apply pending watcher changes and return refreshed status. Query tools already refresh automatically; use this when you want to wait before another step. 显式刷新 watcher 待处理变更并返回状态；普通查询工具会自动刷新，此工具用于主动等待。',
     },
     async () => toolResult(await handleRefresh(cache)),
   );
@@ -190,7 +254,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper index status / 索引状态',
       description:
-        'Return indexed file/symbol/edge counts, timestamps, pending changes and a machine-readable nextAction (none | call_refresh). 返回索引规模、时间戳、待处理变更，以及可程序化判断的 nextAction（none | call_refresh）。',
+        'Return index counts, timestamps and pending changes. Query tools auto-refresh; nextAction only signals whether an explicit wait via repomapper_refresh is useful. 返回索引规模、时间戳和待处理变更；普通查询自动刷新，nextAction 仅提示是否值得显式等待 refresh。',
     },
     async () => toolResult(await handleStatus(cache)),
   );

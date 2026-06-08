@@ -37,10 +37,19 @@ describe('MCP handlers', () => {
     const result = await handleTree(cache, { path: 'src', depth: 2 });
 
     expect(result.root).toBe('src');
-    expect(result.tree).toContain('src');
+    expect(result.tree.split('\n')[0]).toBe('src');
     expect(result.tree).toContain('components/');
     expect(result.tree).toContain('main.ts');
     expect(result.tree).not.toContain('package.json');
+    expect(result.entries).toEqual(
+      expect.arrayContaining([
+        { path: 'src', name: 'src', kind: 'dir', depth: 0 },
+        { path: 'src/components', name: 'components', kind: 'dir', depth: 1, parent: 'src' },
+        { path: 'src/main.ts', name: 'main.ts', kind: 'file', depth: 1, parent: 'src' },
+      ]),
+    );
+    expect(result.tree).toContain('- components/');
+    expect(result.tree).toContain('  - Button.ts');
   });
 
   test('repomapper_search 支持文件、目录和 symbol 搜索', async () => {
@@ -86,8 +95,8 @@ describe('MCP handlers', () => {
     expect(result.importedBy).toEqual(
       expect.arrayContaining(['src/main.ts', 'src/components/Button.ts']),
     );
-    expect(result.callsByExport.helper).toBeDefined();
-    expect(result.callsByExport.helper?.calledBy).toEqual(
+    expect(result.callsByExport?.helper).toBeDefined();
+    expect(result.callsByExport?.helper?.calledBy).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ file: 'src/main.ts', symbol: 'main', line: 5 }),
         expect.objectContaining({ file: 'src/components/Button.ts', symbol: 'Button', line: 3 }),
@@ -182,6 +191,7 @@ describe('MCP handlers', () => {
     expect(result.fresh).toBe(false);
     expect(result.nextAction).toBe('call_refresh');
     expect(result.nextActionMessage).toContain('repomapper_refresh');
+    expect(result.refreshAdvice).toContain('建议调用 repomapper_refresh');
   });
 
   test('repomapper_search 支持 all 搜索和内部方法符号', async () => {
@@ -203,8 +213,9 @@ describe('MCP handlers', () => {
         }),
       ]),
     );
+    expect(fuzzy.total).toBeGreaterThanOrEqual(fuzzy.matches.length);
     expect(fuzzy.matches).toEqual(
-      expect.arrayContaining([expect.objectContaining({ path: 'src/mcp/cache.ts', kind: 'file' })]),
+      expect.arrayContaining([expect.objectContaining({ path: 'src/mcp/cache.ts' })]),
     );
   });
 
@@ -257,6 +268,7 @@ describe('MCP handlers', () => {
     expect(result.fresh).toBe(true);
     expect(result.nextAction).toBe('none');
     expect(result.nextActionMessage).toBeNull();
+    expect(result.refreshAdvice).toContain('无需手动调用 repomapper_refresh');
   });
 
   test('serve 子目录时 context 返回项目根提示和可用技术栈', async () => {

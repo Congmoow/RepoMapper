@@ -35,6 +35,7 @@ export async function handleContext(cache: ProjectCache): Promise<{
   projectRoot?: string;
   rootWarning?: string;
   workspaceFiles?: Array<{ path: string; reason: string }>;
+  recommendedNextReads?: Array<{ path: string; reason: string }>;
   warnings?: string[];
 }> {
   await cache.refresh();
@@ -62,6 +63,12 @@ export async function handleContext(cache: ProjectCache): Promise<{
         ? effectiveDetection.importantFiles
         : toServedRootEntries(effectiveDetection.importantFiles, relativePrefix),
     scripts: effectiveDetection.scripts,
+    recommendedNextReads: buildRecommendedNextReads(
+      relativePrefix === undefined
+        ? effectiveDetection.entryPoints
+        : toServedRootEntries(effectiveDetection.entryPoints, relativePrefix),
+      relativePrefix,
+    ),
     ...(noProjectDetected
       ? {
           warnings: [
@@ -77,6 +84,66 @@ export async function handleContext(cache: ProjectCache): Promise<{
           workspaceFiles: buildWorkspaceFiles(effectiveDetection, relativePrefix ?? ''),
         }),
   };
+}
+
+function buildRecommendedNextReads(
+  entryPoints: Array<{ path: string; label: string }>,
+  relativePrefix: string | undefined,
+): Array<{ path: string; reason: string }> {
+  const recommendations = new Map<string, string>();
+
+  for (const entry of entryPoints) {
+    recommendations.set(entry.path, `入口文件：${entry.label}`);
+  }
+
+  addIfServed(recommendations, 'src/cli.ts', 'CLI 命令注册入口，适合先看用户命令如何分发。', relativePrefix);
+  addIfServed(
+    recommendations,
+    'src/commands/serve.ts',
+    'MCP server 启动命令入口，适合理解 CLI 到 MCP 的衔接。',
+    relativePrefix,
+  );
+  addIfServed(
+    recommendations,
+    'src/mcp/server.ts',
+    'MCP server 初始化与生命周期管理。',
+    relativePrefix,
+  );
+  addIfServed(
+    recommendations,
+    'src/mcp/tools.ts',
+    'MCP tool 注册中心，适合映射 tool 名称和 handler。',
+    relativePrefix,
+  );
+  addIfServed(
+    recommendations,
+    'src/mcp/cache.ts',
+    '索引缓存、自动刷新和 watcher 状态语义。',
+    relativePrefix,
+  );
+
+  return [...recommendations.entries()].map(([path, reason]) => ({ path, reason }));
+}
+
+function addIfServed(
+  recommendations: Map<string, string>,
+  projectRelativePath: string,
+  reason: string,
+  relativePrefix: string | undefined,
+): void {
+  if (relativePrefix === undefined) {
+    recommendations.set(projectRelativePath, reason);
+    return;
+  }
+
+  if (projectRelativePath === relativePrefix) {
+    recommendations.set('.', reason);
+    return;
+  }
+
+  if (projectRelativePath.startsWith(`${relativePrefix}/`)) {
+    recommendations.set(projectRelativePath.slice(relativePrefix.length + 1), reason);
+  }
 }
 
 async function detectUpstreamProject(

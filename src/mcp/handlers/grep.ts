@@ -8,6 +8,7 @@ interface GrepArgs {
   ignoreCase?: boolean | undefined;
   glob?: string | undefined;
   limit?: number | undefined;
+  contextLines?: number | undefined;
 }
 
 export async function handleGrep(
@@ -65,6 +66,7 @@ export async function handleGrep(
     regex,
     ...(args.ignoreCase === undefined ? {} : { ignoreCase: args.ignoreCase }),
     ...(args.limit === undefined ? {} : { limit: args.limit }),
+    ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
   });
 
   return {

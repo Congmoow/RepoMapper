@@ -61,18 +61,20 @@ repomapper serve . --mcp
 
 可用 tools：
 
-- `repomapper_context`：项目概览，包括项目名、技术栈、features、入口文件、重要文件和 scripts。
-- `repomapper_tree`：按路径和深度返回目录树。
-- `repomapper_search`：按关键词或类 glob 模式搜索文件、目录或符号。
-- `repomapper_grep`：按字面量或正则搜索文件内容，可用 glob 和 limit 限定范围。
-- `repomapper_file_info`：返回单文件 exports、内部 symbols、imports、imported-by，以及带调用点行号的 TS/JS 导出函数 `callsByExport`。
+- `repomapper_context`：项目概览，包括项目名、技术栈、features、入口文件、重要文件、scripts 和 `recommendedNextReads` 推荐阅读顺序。
+- `repomapper_tree`：按路径和深度返回目录树文本，并附带结构化 `entries`。
+- `repomapper_search`：按关键词或类 glob 模式搜索文件、目录或符号，返回分页元数据；符号搜索可用 `contextLines` 附带定义片段。
+- `repomapper_grep`：按字面量或正则搜索文件内容，可用 glob、limit 和 `contextLines` 限定范围与上下文。
+- `repomapper_read_file`：读取已索引的仓库相对文本文件或行范围，不读取任意文件系统路径。
+- `repomapper_file_info`：返回单文件 exports、内部 symbols、imports、imported-by，以及带调用点行号的 TS/JS 导出函数 `callsByExport`；其中也包含 best-effort 的 `importCallSites`，支持 `fields` 字段裁剪。
+- `repomapper_file_info_batch`：一次刷新后批量返回多个文件详情，支持同一套 `fields` 字段裁剪。
 - `repomapper_imports`：返回某文件 import 了哪些文件，也就是 fan-out；支持 `limit` 和 `offset`。
 - `repomapper_dependents`：返回哪些文件 import 了某文件，也就是 fan-in；支持 `limit` 和 `offset`。
 - `repomapper_hubs`：返回被最多文件依赖的核心模块。
-- `repomapper_impact`：返回变更文件的直接和传递反向依赖影响范围，包含总量与截断信息，支持 `minDepth` 和 `limit`。
-- `repomapper_path_between`：返回从变更文件到目标文件的最短依赖传播链。
-- `repomapper_refresh`：显式刷新 watcher 待处理变更，并返回刷新后的状态。
-- `repomapper_status`：返回索引状态、统计数据、新鲜度标记、pending watcher 变更和可程序化判断的 `nextAction`。
+- `repomapper_impact`：返回变更文件的直接和传递反向依赖影响范围，包含总量、截断信息和可选解释路径，支持 `minDepth`、`limit` 和 `includePaths`。
+- `repomapper_path_between`：返回从变更文件到目标文件的最短反向依赖传播链；如果查询方向反了，会返回方向说明和正向依赖线索。
+- `repomapper_refresh`：显式等待 watcher 待处理变更；普通查询工具会在回答前自动刷新。
+- `repomapper_status`：返回索引状态、统计数据、新鲜度标记、pending watcher 变更，以及用于显式等待的 `nextAction` 提示。
 
 也可以手动添加 MCP JSON 配置：
 
@@ -94,11 +96,19 @@ repomapper serve . --mcp
 2. **Detect**：识别项目名、技术栈、features、入口文件、脚本命令和高信号文件。
 3. **Index**：为 TS/JS、Python、Go 构建文件级 import graph，并为 TS/JS 建立 regex 级调用边和轻量符号索引。
 4. **Watch**：使用 `chokidar` watcher 标记脏文件，不在每个文件事件上立即重建。
-5. **Refresh**：查询前增量刷新脏文件；新增/删除文件时执行快速全量 scan。
+5. **Refresh**：普通查询工具会在回答前自动增量刷新脏文件；当 Agent 希望在下一步前显式等待 watcher 待处理变更时，可调用 `repomapper_refresh`。新增/删除文件时执行快速全量 scan。
 
 ## Agent 使用建议
 
-在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是逐个 read 文件；代码内容搜索应使用 `repomapper_grep`。
+在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是逐个 read 文件；代码内容搜索应使用 `repomapper_grep`；读取已知文本文件或行范围应使用 `repomapper_read_file`。查询大量文件详情时，优先传入 `fields` 或使用 `repomapper_file_info_batch` 控制返回体积。
+
+第一次接手陌生仓库时，建议先调用 `repomapper_context`，按 `recommendedNextReads` 读入口文件，再用 `repomapper_tree` 查看局部目录，用 `repomapper_hubs` 找被依赖最多的核心模块。`repomapper_path_between` 表达的是反向依赖传播（`from` 变更文件 → `to` 受影响文件）；如果要问“这个文件 import 了什么”，请用 `repomapper_imports`。
+
+本地调试 MCP tool 时，可以不用临时写 SDK 客户端，直接使用一次性调用命令：
+
+```bash
+repomapper mcp call . repomapper_file_info --args '{"path":"src/core/config.ts","fields":["exports","importedBy"]}'
+```
 
 可选的 `agents` 命令会生成 `AGENTS.md` 操作指南。它不是静态项目地图，只记录面向 agent 的仓库导航和工作规则。
 
@@ -116,6 +126,7 @@ repomapper agents . --force
 | `scan [path]`     | 扫描仓库并输出概要信息                        |
 | `doctor [path]`   | 检查仓库元信息是否适合 Agent 使用             |
 | `affected [path]` | 根据变更文件输出受影响文件和测试候选          |
+| `mcp call [path] <tool>` | 一次性调用 RepoMapper MCP tool 并输出 JSON，适合本地调试 |
 | `agents [path]`   | 生成面向 AI Coding Agent 的 `AGENTS.md`       |
 | `init`            | 在当前目录创建 `repomapper.config.json`       |
 
@@ -130,6 +141,7 @@ repomapper agents . --force
 | `--files <files>`         | 显式变更文件列表；不传时读取 `git diff --name-only HEAD` |
 | `--depth <number>`        | `affected` 的反向依赖传播深度，默认 `2`                  |
 | `--json`                  | 为 `scan`、`doctor` 或 `affected` 输出 JSON              |
+| `--args <json>`           | 传给 `mcp call` 的 JSON object 参数                      |
 | `--force`                 | `agents` 覆盖已有 `AGENTS.md`                            |
 
 ## 本地开发
@@ -139,6 +151,8 @@ pnpm install
 pnpm build
 pnpm dev -- --help
 ```
+
+在 Windows 上阅读包含中文的源码或文档时，建议使用 PowerShell 7（`pwsh`），或显式指定 UTF-8，例如 `Get-Content -Encoding UTF8 README-zh-CN.md`。CLI help 和 MCP tool description 本身是 UTF-8 文本；如果终端显示乱码，通常是读取命令或终端代码页按旧编码解码了文件。
 
 ## 本地优先
 

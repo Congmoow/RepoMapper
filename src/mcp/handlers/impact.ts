@@ -6,6 +6,7 @@ interface ImpactArgs {
   depth?: number | undefined;
   minDepth?: number | undefined;
   limit?: number | undefined;
+  includePaths?: boolean | undefined;
 }
 
 export async function handleImpact(
@@ -23,6 +24,7 @@ export async function handleImpact(
   missingRoots: string[];
   suggestions: Record<string, string[]>;
   warnings: string[];
+  pathsByFile?: Record<string, string[]>;
 }> {
   await cache.refresh();
   const scan = cache.getScan();
@@ -48,6 +50,9 @@ export async function handleImpact(
   let frontier = traversalRoots;
   const levels: Record<number, string[]> = {};
   const levelTotals: Record<number, number> = {};
+  const pathsByFile = new Map<string, string[]>(
+    traversalRoots.map((rootPath) => [rootPath, [rootPath]]),
+  );
 
   for (let level = 1; level <= depth; level += 1) {
     const next = new Set<string>();
@@ -57,6 +62,7 @@ export async function handleImpact(
         if (!seen.has(dependent)) {
           seen.add(dependent);
           next.add(dependent);
+          pathsByFile.set(dependent, [...(pathsByFile.get(filePath) ?? [filePath]), dependent]);
         }
       }
     }
@@ -92,6 +98,15 @@ export async function handleImpact(
     missingRoots,
     suggestions,
     warnings,
+    ...(args.includePaths === true
+      ? {
+          pathsByFile: Object.fromEntries(
+            pagedImpacted
+              .map((filePath) => [filePath, pathsByFile.get(filePath)] as const)
+              .filter((entry): entry is readonly [string, string[]] => entry[1] !== undefined),
+          ),
+        }
+      : {}),
   };
 }
 

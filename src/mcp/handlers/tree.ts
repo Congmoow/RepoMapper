@@ -6,6 +6,14 @@ interface TreeArgs {
   depth?: number | undefined;
 }
 
+interface TreeEntry {
+  path: string;
+  name: string;
+  kind: 'file' | 'dir';
+  depth: number;
+  parent?: string;
+}
+
 export async function handleTree(
   cache: ProjectCache,
   args: TreeArgs = {},
@@ -13,6 +21,7 @@ export async function handleTree(
   root: string;
   depth: number;
   tree: string;
+  entries: TreeEntry[];
   suggestions: string[];
   warnings: string[];
 }> {
@@ -26,11 +35,13 @@ export async function handleTree(
     .filter((entry) => isUnderRoot(entry, root))
     .filter((entry) => relativeDepth(entry, root) <= depth)
     .sort((left, right) => left.localeCompare(right));
+  const structuredEntries = visible.map((entry) => toTreeEntry(entry, root));
 
   return {
     root,
     depth,
     tree: renderTree(root, visible),
+    entries: structuredEntries,
     suggestions: resolution.suggestions,
     warnings: resolution.warnings,
   };
@@ -41,7 +52,18 @@ function renderTree(root: string, entries: string[]): string {
     return root;
   }
 
-  return [root, ...entries.map((entry) => `- ${entry}`)].join('\n');
+  return [
+    root,
+    ...entries
+      .filter((entry) => entry.replace(/\/$/, '') !== root)
+      .map((entry) => {
+        const displayEntry = entry.replace(/\/$/, '');
+        const name = displayEntry.split('/').at(-1) ?? displayEntry;
+        const marker = entry.endsWith('/') ? `${name}/` : name;
+        const depth = Math.max(relativeDepth(entry, root) - 1, 0);
+        return `${'  '.repeat(depth)}- ${marker}`;
+      }),
+  ].join('\n');
 }
 
 function isUnderRoot(entry: string, root: string): boolean {
@@ -61,6 +83,30 @@ function relativeDepth(entry: string, root: string): number {
   }
 
   return relative.split('/').filter(Boolean).length;
+}
+
+function toTreeEntry(entry: string, root: string): TreeEntry {
+  const isDirectory = entry.endsWith('/');
+  const path = entry.replace(/\/$/, '');
+  const parent = parentPath(path);
+  const depth = relativeDepth(path, root);
+
+  return {
+    path,
+    name: path === '.' ? '.' : path.split('/').at(-1)!,
+    kind: isDirectory ? 'dir' : 'file',
+    depth,
+    ...(parent === undefined ? {} : { parent }),
+  };
+}
+
+function parentPath(entry: string): string | undefined {
+  const index = entry.lastIndexOf('/');
+  if (index === -1) {
+    return undefined;
+  }
+
+  return entry.slice(0, index);
 }
 
 function normalizeDepth(value: number | undefined, fallback: number): number {

@@ -5,6 +5,7 @@ import { runAgents } from './commands/agents.js';
 import { runDoctor } from './commands/doctor.js';
 import { runInit } from './commands/init.js';
 import { runInstall } from './commands/install.js';
+import { runMcpCall } from './commands/mcp.js';
 import { runScan } from './commands/scan.js';
 import { runServe } from './commands/serve.js';
 import { runUninstall } from './commands/uninstall.js';
@@ -84,6 +85,18 @@ program
   .option('--json', '输出 JSON')
   .action(async (rootPath: string, options: { files?: string; depth?: string; json?: boolean }) =>
     runWithErrorBoundary(() => runAffected(rootPath, options)),
+  );
+
+const mcp = program.command('mcp').description('本地调试 MCP tools');
+
+mcp
+  .command('call')
+  .argument('[path]', '要查询的仓库路径', '.')
+  .argument('<tool>', 'MCP tool 名称，例如 repomapper_file_info')
+  .option('--args <json>', '传给 tool 的 JSON object 参数', '{}')
+  .description('一次性调用 RepoMapper MCP tool 并输出 JSON，便于本地调试')
+  .action((rootPath: string, toolName: string, options: { args?: string }) =>
+    runWithErrorBoundary(() => runMcpCall(rootPath, toolName, options)),
   );
 
 program

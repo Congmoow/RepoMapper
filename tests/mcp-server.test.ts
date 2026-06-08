@@ -13,7 +13,7 @@ describe('MCP server', () => {
     transport = null;
   });
 
-  test('stdio server 注册 12 个 RepoMapper tools 并可调用 context', async () => {
+  test('stdio server 注册 14 个 RepoMapper tools 并可调用核心工具', async () => {
     client = new Client({ name: 'repomapper-test-client', version: '0.1.0' });
     transport = new StdioClientTransport({
       command: process.execPath,
@@ -35,9 +35,10 @@ describe('MCP server', () => {
     expect(instructions).toContain('repomapper_impact');
     expect(instructions).toContain('repomapper_grep');
     expect(instructions).toContain('repomapper_path_between');
+    expect(instructions).toContain('repomapper_read_file');
     expect(instructions).toContain('repomapper_refresh');
     expect(instructions).toContain('在代码内容里找某个字符串');
-    expect(instructions).toContain('status.nextAction === "call_refresh"');
+    expect(instructions).toContain('普通查询工具会自动刷新');
 
     const listed = await client.listTools();
     const names = listed.tools.map((tool) => tool.name).sort();
@@ -46,11 +47,13 @@ describe('MCP server', () => {
       'repomapper_context',
       'repomapper_dependents',
       'repomapper_file_info',
+      'repomapper_file_info_batch',
       'repomapper_grep',
       'repomapper_hubs',
       'repomapper_impact',
       'repomapper_imports',
       'repomapper_path_between',
+      'repomapper_read_file',
       'repomapper_refresh',
       'repomapper_search',
       'repomapper_status',
@@ -102,6 +105,31 @@ describe('MCP server', () => {
     expect(fileInfoContent.callsByExport?.helper?.calledBy).toEqual(
       expect.arrayContaining([expect.objectContaining({ file: 'src/main.ts', line: 5 })]),
     );
+
+    const readFile = await client.callTool({
+      name: 'repomapper_read_file',
+      arguments: { path: 'src/main.ts', startLine: 1, endLine: 2 },
+    });
+    expect(readFile.structuredContent).toMatchObject({
+      path: 'src/main.ts',
+      exists: true,
+      startLine: 1,
+      endLine: 2,
+      content: "import { Button } from './components/Button';\nimport { helper } from './utils';",
+    });
+
+    const batch = await client.callTool({
+      name: 'repomapper_file_info_batch',
+      arguments: { paths: ['src/utils.ts'], fields: ['exports'] },
+    });
+    expect(batch.structuredContent).toMatchObject({
+      files: [
+        expect.objectContaining({
+          path: 'src/utils.ts',
+          exports: expect.arrayContaining([expect.objectContaining({ name: 'helper' })]),
+        }),
+      ],
+    });
 
     const status = await client.callTool({ name: 'repomapper_status', arguments: {} });
     expect(status.structuredContent).toMatchObject({

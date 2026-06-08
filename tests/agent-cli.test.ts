@@ -85,4 +85,32 @@ describe('agent-friendly CLI output', () => {
     expect(parsed.suggestions['src/utils']).toEqual(['src/utils.ts']);
     expect(parsed.impacted).toEqual(expect.arrayContaining(['src/service.ts']));
   });
+
+  test('mcp call 可一次性调用本地 MCP 工具并输出结构化 JSON', async () => {
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        ...cliArgs,
+        'mcp',
+        'call',
+        'tests/fixtures/mcp-project',
+        'repomapper_file_info',
+        '--args',
+        '{"path":"src/utils.ts","fields":["exports"]}',
+      ],
+      { cwd: process.cwd() },
+    );
+
+    const parsed = JSON.parse(stdout) as {
+      path: string;
+      exports?: Array<{ name: string }>;
+      imports?: string[];
+    };
+
+    expect(parsed.path).toBe('src/utils.ts');
+    expect(parsed.exports).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'helper' })]),
+    );
+    expect(parsed.imports).toBeUndefined();
+  });
 });
