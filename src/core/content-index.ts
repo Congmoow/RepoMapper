@@ -23,6 +23,8 @@ export interface ContentSearchOptions {
   ignoreCase?: boolean;
   /** 最多返回的匹配数。 */
   limit?: number;
+  /** 跳过前 N 个匹配，用于分页。 */
+  offset?: number;
   /** 每个匹配项前后要附带的上下文行数。 */
   contextLines?: number;
 }
@@ -122,13 +124,21 @@ export class ContentIndex {
     files: string[],
     pattern: string,
     options: ContentSearchOptions = {},
-  ): Promise<{ matches: ContentMatch[]; truncated: boolean; scannedFiles: number }> {
+  ): Promise<{
+    matches: ContentMatch[];
+    total: number;
+    offset: number;
+    truncated: boolean;
+    scannedFiles: number;
+    nextOffset: number | null;
+  }> {
     const limit = normalizeLimit(options.limit);
+    const offset = normalizeOffset(options.offset);
     const matcher = buildMatcher(pattern, options);
     const contextLines = normalizeContextLines(options.contextLines);
     const matches: ContentMatch[] = [];
     let scannedFiles = 0;
-    let truncated = false;
+    let total = 0;
 
     for (const file of files) {
       const fileLines = await this.readLines(file);
@@ -140,21 +150,30 @@ export class ContentIndex {
 
       for (let i = 0; i < lines.length; i += 1) {
         if (matcher(lines[i]!)) {
-          matches.push({
-            path: file,
-            line: i + 1,
-            text: trimLine(lines[i]!),
-            ...(contextLines > 0 ? buildContext(lines, i, contextLines) : {}),
-          });
-          if (matches.length >= limit) {
-            truncated = true;
-            return { matches, truncated, scannedFiles };
+          if (total >= offset && matches.length < limit) {
+            matches.push({
+              path: file,
+              line: i + 1,
+              text: trimLine(lines[i]!),
+              ...(contextLines > 0 ? buildContext(lines, i, contextLines) : {}),
+            });
           }
+          total += 1;
         }
       }
     }
 
-    return { matches, truncated, scannedFiles };
+    const nextOffset = offset + matches.length;
+    const truncated = nextOffset < total;
+
+    return {
+      matches,
+      total,
+      offset,
+      truncated,
+      scannedFiles,
+      nextOffset: truncated ? nextOffset : null,
+    };
   }
 }
 
@@ -208,6 +227,14 @@ function normalizeLimit(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value) || value < 1) {
     return DEFAULT_LIMIT;
   }
+  return Math.floor(value);
+}
+
+function normalizeOffset(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+
   return Math.floor(value);
 }
 

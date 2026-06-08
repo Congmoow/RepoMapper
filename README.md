@@ -64,12 +64,12 @@ Available tools:
 | Tool                      | Purpose                                                                                                          |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `repomapper_context`      | Project overview: name, tech stack, features, entry points, important files, scripts, served-root warnings, and `recommendedNextReads`. |
-| `repomapper_tree`         | Bounded directory tree by path and depth, with text and structured `entries`.                                    |
+| `repomapper_tree`         | Bounded directory tree by path and depth, with text and structured `entries`; use `fields` to return only one form. |
 | `repomapper_search`       | Search files, directories, symbols, or all result types with token matching, glob-like patterns, paging metadata, and optional symbol snippets via `contextLines`. |
-| `repomapper_grep`         | Search file contents by literal text or regex, with optional glob scoping, match limits, and context lines.      |
+| `repomapper_grep`         | Search file contents by literal text or regex, with optional glob scoping, match limits, `offset` paging, and context lines. |
 | `repomapper_read_file`    | Read an indexed repo-relative text file or line range without exposing arbitrary filesystem paths.               |
-| `repomapper_file_info`    | File exports, internal symbols, imports, imported-by files, TS/JS `callsByExport`, and best-effort `importCallSites`; supports `fields`. |
-| `repomapper_file_info_batch` | Batch file info for multiple paths with one refresh; supports the same `fields` selection.                   |
+| `repomapper_file_info`    | File exports, internal symbols, imports, and imported-by files by default; request `callsByExport` through `fields` when call/called-by data is needed. |
+| `repomapper_file_info_batch` | Batch file info for multiple paths with one refresh; supports the same `fields` selection and lightweight default. |
 | `repomapper_imports`      | Direct fan-out dependencies for a file, with optional `limit` and `offset`.                                      |
 | `repomapper_dependents`   | Direct fan-in dependents for a file, with optional `limit` and `offset`.                                         |
 | `repomapper_hubs`         | Files with the most dependents.                                                                                  |
@@ -102,7 +102,9 @@ Manual MCP configuration:
 
 ## Agent Usage
 
-In MCP mode, agents receive RepoMapper server instructions during initialization. Structural questions should prefer RepoMapper tools over ad hoc grep or repeated file reads. Content searches should use `repomapper_grep`; reading a known text file or line range should use `repomapper_read_file`. For large file-detail queries, pass `fields` or use `repomapper_file_info_batch` to keep responses small.
+In MCP mode, agents receive RepoMapper server instructions during initialization. Structural questions should prefer RepoMapper tools over ad hoc grep or repeated file reads. Content searches should use `repomapper_grep`; if `repomapper_search` returns no structural hits, switch to `repomapper_grep` for code content. Reading a known text file or line range should use `repomapper_read_file`.
+
+`repomapper_file_info` now defaults to the lighter `exports`, `symbols`, `imports`, and `importedBy` fields. Pass `fields: ["callsByExport"]` for TS/JS call/called-by data and best-effort `importCallSites`, or `fields: []` when you explicitly need the legacy full payload. For many files, use `repomapper_file_info_batch` so the index refreshes once.
 
 When first landing in an unfamiliar repository, start with `repomapper_context` and its `recommendedNextReads`, then use `repomapper_tree` for a bounded directory slice and `repomapper_hubs` for depended-on modules. `repomapper_path_between` follows reverse-dependency change propagation (`from` changed file → `to` affected file); use `repomapper_imports` for forward "what does this file import?" questions.
 
@@ -110,6 +112,13 @@ For local MCP debugging without writing a temporary SDK client, use the one-shot
 
 ```bash
 repomapper mcp call . repomapper_file_info --args '{"path":"src/core/config.ts","fields":["exports","importedBy"]}'
+```
+
+On Windows or any shell where JSON quoting is awkward, prefer an args file or stdin:
+
+```bash
+repomapper mcp call . repomapper_file_info --args-file args.json
+'{"path":"src/core/config.ts","fields":["exports","importedBy"]}' | repomapper mcp call . repomapper_file_info --args-stdin
 ```
 
 The optional `agents` command can generate an `AGENTS.md` guide. It is not a static project map; it records agent-facing navigation notes and working rules:
@@ -144,6 +153,8 @@ Common options:
 | `--depth <number>`        | Reverse-dependency traversal depth for `affected`; defaults to `2`.                     |
 | `--json`                  | Emit JSON for `scan`, `doctor`, or `affected`.                                          |
 | `--args <json>`           | JSON object passed to `mcp call`.                                                       |
+| `--args-file <file>`      | Read the JSON object for `mcp call` from a UTF-8 file.                                  |
+| `--args-stdin`            | Read the JSON object for `mcp call` from stdin.                                         |
 | `--force`                 | Let `agents` overwrite an existing `AGENTS.md`.                                         |
 
 ## Local Development

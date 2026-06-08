@@ -94,9 +94,16 @@ mcp
   .argument('[path]', '要查询的仓库路径', '.')
   .argument('<tool>', 'MCP tool 名称，例如 repomapper_file_info')
   .option('--args <json>', '传给 tool 的 JSON object 参数', '{}')
+  .option('--args-file <file>', '从 UTF-8 JSON 文件读取 tool 参数')
+  .option('--args-stdin', '从 stdin 读取 tool 参数 JSON')
   .description('一次性调用 RepoMapper MCP tool 并输出 JSON，便于本地调试')
-  .action((rootPath: string, toolName: string, options: { args?: string }) =>
-    runWithErrorBoundary(() => runMcpCall(rootPath, toolName, options)),
+  .action(
+    (
+      rootPath: string,
+      toolName: string,
+      options: { args?: string; argsFile?: string; argsStdin?: boolean },
+    ) =>
+      runWithErrorBoundary(() => runMcpCall(rootPath, toolName, options)),
   );
 
 program

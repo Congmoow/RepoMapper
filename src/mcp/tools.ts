@@ -23,6 +23,7 @@ const fileInfoFieldSchema = z.enum([
   'importedBy',
   'callsByExport',
 ]);
+const treeFieldSchema = z.enum(['tree', 'entries']);
 
 export function registerRepoMapperTools(server: McpServer, cache: ProjectCache): void {
   server.registerTool(
@@ -44,6 +45,10 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
       inputSchema: {
         path: z.string().optional().describe('Optional subdirectory path; defaults to repo root. 可选子目录路径，默认仓库根目录。'),
         depth: z.number().int().positive().optional().describe('Max relative depth, default 3. 最大相对深度，默认 3。'),
+        fields: z
+          .array(treeFieldSchema)
+          .optional()
+          .describe('Optional return fields: tree and/or entries. 可选返回字段：tree 和/或 entries。'),
       },
     },
     async (args) => toolResult(await handleTree(cache, args)),
@@ -92,6 +97,7 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
           .optional()
           .describe('Optional picomatch glob to restrict files, e.g. src/**/*.ts. 可选 glob，仅在匹配文件中搜索。'),
         limit: z.number().int().positive().optional().describe('Max matches, default 100. 最多返回匹配数，默认 100。'),
+        offset: z.number().int().min(0).optional().describe('Skip first N matches for paging, default 0. 分页时跳过前 N 个匹配，默认 0。'),
         contextLines: z
           .number()
           .int()
@@ -124,13 +130,13 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper file detail / 文件详情',
       description:
-        'Return a file\'s symbols, dependencies/dependents and TS/JS calls/calledBy. callsByExport also includes best-effort importCallSites for imported usages. Use fields to reduce payload size. 返回文件符号、依赖/反向依赖和 TS/JS 调用关系；callsByExport 还包含 best-effort 导入调用点；可用 fields 裁剪返回体积。',
+        'Return file symbols and dependencies. By default omits bulky callsByExport; pass fields to select payload, or fields: [] for the legacy full result. callsByExport also includes best-effort importCallSites for imported usages. 返回文件符号和依赖关系；默认省略较大的 callsByExport；可用 fields 裁剪返回体积，或传 fields: [] 获取旧版全量结果；importCallSites 是 callsByExport 的子字段。',
       inputSchema: {
         path: z.string().min(1).describe('Repo-relative file path. 仓库相对文件路径。'),
         fields: z
           .array(fileInfoFieldSchema)
           .optional()
-          .describe('Optional fields to return. 可选返回字段。'),
+          .describe('Optional fields to return; omit for lightweight defaults, [] for all fields. 可选返回字段；不传为轻量默认，[] 为全部字段。'),
       },
     },
     async (args) => toolResult(await handleFileInfo(cache, args)),
@@ -141,13 +147,13 @@ export function registerRepoMapperTools(server: McpServer, cache: ProjectCache):
     {
       title: 'RepoMapper batch file details / 批量文件详情',
       description:
-        'Return file info for multiple repo-relative paths with one refresh, optionally field-selected. 一次刷新后批量返回多个文件详情，可用 fields 裁剪字段。',
+        'Return file info for multiple repo-relative paths with one refresh, optionally field-selected. Omit fields for lightweight defaults, [] for all fields. 一次刷新后批量返回多个文件详情；不传 fields 为轻量默认，[] 为全部字段。',
       inputSchema: {
         paths: z.array(z.string().min(1)).min(1).describe('Repo-relative file paths. 仓库相对文件路径列表。'),
         fields: z
           .array(fileInfoFieldSchema)
           .optional()
-          .describe('Optional fields to return for each file. 每个文件可选返回字段。'),
+          .describe('Optional fields to return for each file; omit for lightweight defaults, [] for all fields. 每个文件可选返回字段；不传为轻量默认，[] 为全部字段。'),
       },
     },
     async (args) => toolResult(await handleFileInfoBatch(cache, args)),

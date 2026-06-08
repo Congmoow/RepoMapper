@@ -49,26 +49,25 @@ export async function handleContext(cache: ProjectCache): Promise<{
 
   const noProjectDetected = isEmptyDetection(detection) && upstream === undefined;
 
+  const entryPoints =
+    relativePrefix === undefined
+      ? effectiveDetection.entryPoints
+      : toServedRootEntries(effectiveDetection.entryPoints, relativePrefix);
+  const importantFiles =
+    relativePrefix === undefined
+      ? effectiveDetection.importantFiles
+      : toServedRootEntries(effectiveDetection.importantFiles, relativePrefix);
+  const recommendedNextReads = buildRecommendedNextReads(entryPoints, relativePrefix);
+
   return {
     projectName: effectiveDetection.projectName ?? path.basename(cache.rootPath),
     rootPath: cache.rootPath,
     detectedTechStack: effectiveDetection.detectedTechStack,
     detectedFeatures: effectiveDetection.detectedFeatures,
-    entryPoints:
-      relativePrefix === undefined
-        ? effectiveDetection.entryPoints
-        : toServedRootEntries(effectiveDetection.entryPoints, relativePrefix),
-    importantFiles:
-      relativePrefix === undefined
-        ? effectiveDetection.importantFiles
-        : toServedRootEntries(effectiveDetection.importantFiles, relativePrefix),
+    entryPoints,
+    importantFiles: mergeImportantFiles(importantFiles, recommendedNextReads),
     scripts: effectiveDetection.scripts,
-    recommendedNextReads: buildRecommendedNextReads(
-      relativePrefix === undefined
-        ? effectiveDetection.entryPoints
-        : toServedRootEntries(effectiveDetection.entryPoints, relativePrefix),
-      relativePrefix,
-    ),
+    recommendedNextReads,
     ...(noProjectDetected
       ? {
           warnings: [
@@ -84,6 +83,21 @@ export async function handleContext(cache: ProjectCache): Promise<{
           workspaceFiles: buildWorkspaceFiles(effectiveDetection, relativePrefix ?? ''),
         }),
   };
+}
+
+function mergeImportantFiles(
+  importantFiles: Array<{ path: string; reason: string }>,
+  recommendedNextReads: Array<{ path: string; reason: string }>,
+): Array<{ path: string; reason: string }> {
+  const merged = new Map(importantFiles.map((file) => [file.path, file.reason]));
+
+  for (const recommendation of recommendedNextReads) {
+    if (!merged.has(recommendation.path)) {
+      merged.set(recommendation.path, recommendation.reason);
+    }
+  }
+
+  return [...merged.entries()].map(([path, reason]) => ({ path, reason }));
 }
 
 function buildRecommendedNextReads(

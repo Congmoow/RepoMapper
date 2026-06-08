@@ -219,6 +219,33 @@ describe('MCP agent UX', () => {
     expect(result.matches[0]?.after?.at(-1)).toMatchObject({ line: 46 });
   });
 
+  test('repomapper_grep 返回分页元数据并支持 offset 续页', async () => {
+    const cache = new ProjectCache(sourceFixtureRoot, { watch: false });
+
+    const firstPage = await handleGrep(cache, {
+      pattern: 'helper',
+      glob: 'src/**/*.ts',
+      limit: 1,
+    });
+    const secondPage = await handleGrep(cache, {
+      pattern: 'helper',
+      glob: 'src/**/*.ts',
+      limit: 1,
+      offset: firstPage.nextOffset ?? 0,
+    });
+
+    expect(firstPage).toMatchObject({
+      count: 1,
+      offset: 0,
+      total: expect.any(Number),
+      truncated: true,
+      nextOffset: 1,
+    });
+    expect(firstPage.total).toBeGreaterThan(1);
+    expect(secondPage.offset).toBe(1);
+    expect(secondPage.matches[0]).not.toEqual(firstPage.matches[0]);
+  });
+
   test('repomapper_search 可返回定义片段、总数和截断信息，并优先排序精确命中', async () => {
     const cache = new ProjectCache(sourceFixtureRoot, { watch: false });
 
@@ -237,6 +264,29 @@ describe('MCP agent UX', () => {
       text: expect.any(String),
       before: expect.any(Array),
       after: expect.any(Array),
+    });
+  });
+
+  test('repomapper_search 零结果时提示改用 grep，泛搜时函数优先于类型', async () => {
+    const cache = new ProjectCache('.', { watch: false });
+
+    const noMatch = await handleSearch(cache, {
+      pattern: 'repomapper_grep',
+      kind: 'all',
+    });
+    const symbolSearch = await handleSearch(cache, {
+      pattern: 'search',
+      kind: 'symbol',
+      limit: 3,
+    });
+
+    expect(noMatch.matches).toEqual([]);
+    expect(noMatch.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('repomapper_grep')]),
+    );
+    expect(symbolSearch.matches[0]).toMatchObject({
+      name: 'handleSearch',
+      symbolKind: 'function',
     });
   });
 
@@ -285,6 +335,8 @@ describe('MCP agent UX', () => {
 
     expect(result.connected).toBe(false);
     expect(result.direction).toBe('reverse-dependency');
+    expect(result.queryInterpretedAs).toBe('change-propagation');
+    expect(result.reason).toBe('forward-path-only');
     expect(result.directionHint).toContain('变更传播');
     expect(result.forwardDependencyPath).toEqual(['src/target.ts', 'src/a.ts']);
     expect(result.warnings).toEqual(
@@ -329,10 +381,16 @@ describe('MCP agent UX', () => {
     const originalMain = await fs.readFile(mainPath, 'utf8');
     const cache = new ProjectCache(workspace.root, { watch: false });
 
-    const before = await handleFileInfo(cache, { path: 'src/utils.ts' });
+    const before = await handleFileInfo(cache, {
+      path: 'src/utils.ts',
+      fields: ['callsByExport'],
+    });
     await fs.writeFile(mainPath, `\n\n${originalMain}`, 'utf8');
     cache.markDirty('src/main.ts', 'change');
-    const after = await handleFileInfo(cache, { path: 'src/utils.ts' });
+    const after = await handleFileInfo(cache, {
+      path: 'src/utils.ts',
+      fields: ['callsByExport'],
+    });
 
     expect(before.callsByExport?.helper?.calledBy).toEqual(
       expect.arrayContaining([expect.objectContaining({ file: 'src/main.ts', line: 4 })]),
@@ -348,6 +406,9 @@ describe('MCP agent UX', () => {
     const explicitDefault = await handleFileInfo(cache, {
       path: 'src/utils.ts',
       fields: [],
+    });
+    const implicitDefault = await handleFileInfo(cache, {
+      path: 'src/utils.ts',
     });
     const trimmed = await handleFileInfo(cache, {
       path: 'src/utils.ts',
@@ -365,6 +426,13 @@ describe('MCP agent UX', () => {
       importedBy: expect.any(Array),
       callsByExport: expect.any(Object),
     });
+    expect(implicitDefault).toMatchObject({
+      exports: expect.any(Array),
+      symbols: expect.any(Array),
+      imports: expect.any(Array),
+      importedBy: expect.any(Array),
+    });
+    expect(implicitDefault).not.toHaveProperty('callsByExport');
     expect(trimmed).toMatchObject({
       path: 'src/utils.ts',
       exists: true,
@@ -383,6 +451,7 @@ describe('MCP agent UX', () => {
       exists: false,
       suggestions: expect.arrayContaining(['src/utils.ts']),
     });
+    expect(batch.files[1]).not.toHaveProperty('limitation');
   });
 
   test('repomapper_file_info 为导出符号返回 best-effort 导入调用点', async () => {

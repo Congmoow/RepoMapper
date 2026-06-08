@@ -31,13 +31,27 @@ describe('MCP handlers', () => {
     );
   });
 
+  test('repomapper_context 将推荐阅读入口并入 importantFiles', async () => {
+    const cache = new ProjectCache('.', { watch: false });
+
+    const result = await handleContext(cache);
+
+    expect(result.importantFiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'src/cli.ts' }),
+        expect.objectContaining({ path: 'src/mcp/tools.ts' }),
+        expect.objectContaining({ path: 'src/mcp/cache.ts' }),
+      ]),
+    );
+  });
+
   test('repomapper_tree 按子目录和深度返回目录树', async () => {
     const cache = new ProjectCache(fixtureRoot, { watch: false });
 
     const result = await handleTree(cache, { path: 'src', depth: 2 });
 
     expect(result.root).toBe('src');
-    expect(result.tree.split('\n')[0]).toBe('src');
+    expect(result.tree?.split('\n')[0]).toBe('src');
     expect(result.tree).toContain('components/');
     expect(result.tree).toContain('main.ts');
     expect(result.tree).not.toContain('package.json');
@@ -50,6 +64,21 @@ describe('MCP handlers', () => {
     );
     expect(result.tree).toContain('- components/');
     expect(result.tree).toContain('  - Button.ts');
+  });
+
+  test('repomapper_tree 支持字段选择以减少重复返回', async () => {
+    const cache = new ProjectCache(fixtureRoot, { watch: false });
+
+    const entriesOnly = await handleTree(cache, { path: 'src', depth: 1, fields: ['entries'] });
+    const treeOnly = await handleTree(cache, { path: 'src', depth: 1, fields: ['tree'] });
+
+    expect(entriesOnly).toMatchObject({
+      root: 'src',
+      entries: expect.arrayContaining([expect.objectContaining({ path: 'src/main.ts' })]),
+    });
+    expect(entriesOnly).not.toHaveProperty('tree');
+    expect(treeOnly).toMatchObject({ root: 'src', tree: expect.stringContaining('main.ts') });
+    expect(treeOnly).not.toHaveProperty('entries');
   });
 
   test('repomapper_search 支持文件、目录和 symbol 搜索', async () => {
@@ -85,7 +114,10 @@ describe('MCP handlers', () => {
   test('repomapper_file_info 返回 exports、imports 和 dependents', async () => {
     const cache = new ProjectCache(fixtureRoot, { watch: false });
 
-    const result = await handleFileInfo(cache, { path: 'src/utils.ts' });
+    const result = await handleFileInfo(cache, {
+      path: 'src/utils.ts',
+      fields: ['exports', 'imports', 'importedBy', 'callsByExport'],
+    });
 
     expect(result.path).toBe('src/utils.ts');
     expect(result.exports).toEqual(

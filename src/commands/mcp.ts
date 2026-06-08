@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+
 import { ProjectCache } from '../mcp/cache.js';
 import { handleContext } from '../mcp/handlers/context.js';
 import { handleFileInfo, handleFileInfoBatch } from '../mcp/handlers/file-info.js';
@@ -15,6 +17,8 @@ import { RepoMapperError } from '../utils/errors.js';
 
 interface McpCallOptions {
   args?: string | undefined;
+  argsFile?: string | undefined;
+  argsStdin?: boolean | undefined;
 }
 
 type ToolHandler = (cache: ProjectCache, args: Record<string, unknown>) => Promise<object>;
@@ -37,6 +41,7 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       ignoreCase: booleanArg(args, 'ignoreCase'),
       glob: optionalStringArg(args, 'glob'),
       limit: numberArg(args, 'limit'),
+      offset: numberArg(args, 'offset'),
       contextLines: numberArg(args, 'contextLines'),
     }),
   repomapper_read_file: (cache, args) =>
@@ -104,7 +109,7 @@ export async function runMcpCall(
     );
   }
 
-  const args = parseArgs(options.args);
+  const args = await parseArgs(options);
   const cache = new ProjectCache(rootPath, { watch: false });
 
   try {
@@ -115,7 +120,8 @@ export async function runMcpCall(
   }
 }
 
-function parseArgs(raw: string | undefined): Record<string, unknown> {
+async function parseArgs(options: McpCallOptions): Promise<Record<string, unknown>> {
+  const raw = await readRawArgs(options);
   if (raw === undefined || raw.trim().length === 0) {
     return {};
   }
@@ -134,12 +140,36 @@ function parseArgs(raw: string | undefined): Record<string, unknown> {
   throw new RepoMapperError('--args 必须是 JSON object。');
 }
 
+async function readRawArgs(options: McpCallOptions): Promise<string | undefined> {
+  if (options.argsStdin === true) {
+    return readStdin();
+  }
+
+  if (options.argsFile !== undefined && options.argsFile.length > 0) {
+    return fs.readFile(options.argsFile, 'utf8');
+  }
+
+  return options.args;
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function stringArg(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value === 'string' && value.length > 0) {
     return value;
   }
-  throw new RepoMapperError(`缺少必需参数：${key}`);
+  throw new RepoMapperError(
+    `缺少必需参数：${key}。示例：repomapper mcp call . repomapper_file_info --args-file args.json`,
+  );
 }
 
 function optionalStringArg(args: Record<string, unknown>, key: string): string | undefined {
@@ -169,7 +199,9 @@ function requiredStringArrayArg(args: Record<string, unknown>, key: string): str
   if (value !== undefined && value.length > 0) {
     return value;
   }
-  throw new RepoMapperError(`缺少必需参数：${key}`);
+  throw new RepoMapperError(
+    `缺少必需参数：${key}。示例：repomapper mcp call . repomapper_file_info --args-file args.json`,
+  );
 }
 
 function enumArg<T extends string>(

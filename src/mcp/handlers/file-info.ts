@@ -6,6 +6,7 @@ import { resolveRepoPath } from '../../core/path-resolver.js';
 import type { SymbolInfo } from '../../core/symbols.js';
 
 const FILE_INFO_FIELDS = ['exports', 'symbols', 'imports', 'importedBy', 'callsByExport'] as const;
+const DEFAULT_FILE_INFO_FIELDS = ['exports', 'symbols', 'imports', 'importedBy'] as const;
 
 type FileInfoField = (typeof FILE_INFO_FIELDS)[number];
 
@@ -108,17 +109,21 @@ async function buildFileInfo(
       : {}),
     suggestions: resolution.suggestions,
     warnings: resolution.warnings,
-    ...(isTsJsFile(filePath)
-      ? {}
-      : {
+    ...(resolution.exists && !isTsJsFile(filePath)
+      ? {
           limitation:
             'imports/importedBy 支持 TS/JS、Python 和 Go；exports 与 callsByExport 目前仅支持 TS/JS。',
-        }),
+        }
+      : {}),
   };
 }
 
 function normalizeFields(fields: FileInfoField[] | undefined): Set<FileInfoField> {
-  if (fields === undefined || fields.length === 0) {
+  if (fields === undefined) {
+    return new Set(DEFAULT_FILE_INFO_FIELDS);
+  }
+
+  if (fields.length === 0) {
     return new Set(FILE_INFO_FIELDS);
   }
 

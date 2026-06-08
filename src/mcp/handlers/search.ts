@@ -37,6 +37,7 @@ export async function handleSearch(
   offset: number;
   truncated: boolean;
   nextOffset: number | null;
+  warnings: string[];
 }> {
   await cache.refresh();
   const kind = args.kind ?? 'file';
@@ -87,6 +88,10 @@ export async function handleSearch(
   const pagedMatches = sortedMatches.slice(offset, offset + limit);
   const nextOffset = offset + pagedMatches.length;
   const truncated = nextOffset < sortedMatches.length;
+  const warnings =
+    sortedMatches.length === 0
+      ? ['未找到结构命中；如果要搜索代码内容、工具名或任意字符串，请使用 repomapper_grep。']
+      : [];
 
   return {
     pattern,
@@ -97,6 +102,7 @@ export async function handleSearch(
     offset,
     truncated,
     nextOffset: truncated ? nextOffset : null,
+    warnings,
   };
 }
 
@@ -192,6 +198,10 @@ function scoreMatch(match: SearchMatch, pattern: string, requestedKind: SearchKi
 
   if (match.kind === requestedKind) score += 8;
   if (match.kind === 'symbol') score += 4;
+  if (match.symbolKind === 'function' || match.symbolKind === 'method') score += 10;
+  if ((match.symbolKind === 'function' || match.symbolKind === 'method') && match.exported) {
+    score += 4;
+  }
   if (subject === normalizedPattern) score += 24;
   else if (subject.startsWith(normalizedPattern)) score += 16;
   else if (subject.includes(normalizedPattern)) score += 8;

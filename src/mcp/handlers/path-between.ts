@@ -10,6 +10,12 @@ interface PathBetweenArgs {
 
 const DEFAULT_MAX_PATHS = 5;
 const DEFAULT_MAX_DEPTH = 12;
+type PathBetweenReason =
+  | 'connected'
+  | 'same-file'
+  | 'missing'
+  | 'forward-path-only'
+  | 'not-connected';
 
 export async function handlePathBetween(
   cache: ProjectCache,
@@ -22,6 +28,8 @@ export async function handlePathBetween(
   paths: string[][];
   truncated: boolean;
   direction: 'reverse-dependency';
+  queryInterpretedAs: 'change-propagation';
+  reason: PathBetweenReason;
   directionHint: string;
   forwardDependencyPath?: string[];
   missing: string[];
@@ -61,6 +69,8 @@ export async function handlePathBetween(
       paths: from === to && missingPaths.length === 0 ? [[from]] : [],
       truncated: false,
       direction: 'reverse-dependency',
+      queryInterpretedAs: 'change-propagation',
+      reason: missingPaths.length > 0 ? 'missing' : 'same-file',
       directionHint: buildDirectionHint(),
       missing: missingPaths,
       suggestions,
@@ -89,6 +99,8 @@ export async function handlePathBetween(
     paths: pagedPaths,
     truncated,
     direction: 'reverse-dependency',
+    queryInterpretedAs: 'change-propagation',
+    reason: paths.length > 0 ? 'connected' : forwardDependencyPath ? 'forward-path-only' : 'not-connected',
     directionHint: buildDirectionHint(),
     ...(forwardDependencyPath === undefined ? {} : { forwardDependencyPath }),
     missing: missingPaths,

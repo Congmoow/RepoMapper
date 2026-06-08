@@ -4,6 +4,7 @@ import { resolveRepoPath } from '../../core/path-resolver.js';
 interface TreeArgs {
   path?: string | undefined;
   depth?: number | undefined;
+  fields?: Array<'tree' | 'entries'> | undefined;
 }
 
 interface TreeEntry {
@@ -20,8 +21,8 @@ export async function handleTree(
 ): Promise<{
   root: string;
   depth: number;
-  tree: string;
-  entries: TreeEntry[];
+  tree?: string;
+  entries?: TreeEntry[];
   suggestions: string[];
   warnings: string[];
 }> {
@@ -36,15 +37,24 @@ export async function handleTree(
     .filter((entry) => relativeDepth(entry, root) <= depth)
     .sort((left, right) => left.localeCompare(right));
   const structuredEntries = visible.map((entry) => toTreeEntry(entry, root));
+  const fields = normalizeFields(args.fields);
 
   return {
     root,
     depth,
-    tree: renderTree(root, visible),
-    entries: structuredEntries,
+    ...(fields.has('tree') ? { tree: renderTree(root, visible) } : {}),
+    ...(fields.has('entries') ? { entries: structuredEntries } : {}),
     suggestions: resolution.suggestions,
     warnings: resolution.warnings,
   };
+}
+
+function normalizeFields(fields: Array<'tree' | 'entries'> | undefined): Set<'tree' | 'entries'> {
+  if (fields === undefined || fields.length === 0) {
+    return new Set(['tree', 'entries']);
+  }
+
+  return new Set(fields.filter((field) => field === 'tree' || field === 'entries'));
 }
 
 function renderTree(root: string, entries: string[]): string {

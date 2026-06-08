@@ -62,12 +62,12 @@ repomapper serve . --mcp
 可用 tools：
 
 - `repomapper_context`：项目概览，包括项目名、技术栈、features、入口文件、重要文件、scripts 和 `recommendedNextReads` 推荐阅读顺序。
-- `repomapper_tree`：按路径和深度返回目录树文本，并附带结构化 `entries`。
+- `repomapper_tree`：按路径和深度返回目录树文本，并附带结构化 `entries`；可用 `fields` 只返回其中一种形式。
 - `repomapper_search`：按关键词或类 glob 模式搜索文件、目录或符号，返回分页元数据；符号搜索可用 `contextLines` 附带定义片段。
-- `repomapper_grep`：按字面量或正则搜索文件内容，可用 glob、limit 和 `contextLines` 限定范围与上下文。
+- `repomapper_grep`：按字面量或正则搜索文件内容，可用 glob、limit、`offset` 和 `contextLines` 限定范围、分页与上下文。
 - `repomapper_read_file`：读取已索引的仓库相对文本文件或行范围，不读取任意文件系统路径。
-- `repomapper_file_info`：返回单文件 exports、内部 symbols、imports、imported-by，以及带调用点行号的 TS/JS 导出函数 `callsByExport`；其中也包含 best-effort 的 `importCallSites`，支持 `fields` 字段裁剪。
-- `repomapper_file_info_batch`：一次刷新后批量返回多个文件详情，支持同一套 `fields` 字段裁剪。
+- `repomapper_file_info`：默认返回单文件 exports、内部 symbols、imports 和 imported-by；需要 TS/JS 调用/被调用关系时，通过 `fields` 显式请求 `callsByExport`。
+- `repomapper_file_info_batch`：一次刷新后批量返回多个文件详情，支持同一套 `fields` 字段裁剪和轻量默认。
 - `repomapper_imports`：返回某文件 import 了哪些文件，也就是 fan-out；支持 `limit` 和 `offset`。
 - `repomapper_dependents`：返回哪些文件 import 了某文件，也就是 fan-in；支持 `limit` 和 `offset`。
 - `repomapper_hubs`：返回被最多文件依赖的核心模块。
@@ -100,7 +100,9 @@ repomapper serve . --mcp
 
 ## Agent 使用建议
 
-在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是逐个 read 文件；代码内容搜索应使用 `repomapper_grep`；读取已知文本文件或行范围应使用 `repomapper_read_file`。查询大量文件详情时，优先传入 `fields` 或使用 `repomapper_file_info_batch` 控制返回体积。
+在 MCP 模式下，Agent 会在 MCP initialize 阶段收到 RepoMapper server instructions。结构性问题应该优先使用 MCP tools，而不是逐个 read 文件；代码内容搜索应使用 `repomapper_grep`，如果 `repomapper_search` 没有结构命中，应切换到 `repomapper_grep` 搜代码内容；读取已知文本文件或行范围应使用 `repomapper_read_file`。
+
+`repomapper_file_info` 默认返回较轻量的 `exports`、`symbols`、`imports` 和 `importedBy`。需要 TS/JS 调用/被调用关系和 best-effort `importCallSites` 时，传 `fields: ["callsByExport"]`；明确需要旧版全量返回时，传 `fields: []`。查询大量文件详情时，优先使用 `repomapper_file_info_batch`，这样索引只刷新一次。
 
 第一次接手陌生仓库时，建议先调用 `repomapper_context`，按 `recommendedNextReads` 读入口文件，再用 `repomapper_tree` 查看局部目录，用 `repomapper_hubs` 找被依赖最多的核心模块。`repomapper_path_between` 表达的是反向依赖传播（`from` 变更文件 → `to` 受影响文件）；如果要问“这个文件 import 了什么”，请用 `repomapper_imports`。
 
@@ -108,6 +110,13 @@ repomapper serve . --mcp
 
 ```bash
 repomapper mcp call . repomapper_file_info --args '{"path":"src/core/config.ts","fields":["exports","importedBy"]}'
+```
+
+在 Windows 或其它 JSON 引号容易出问题的 shell 中，优先使用参数文件或 stdin：
+
+```bash
+repomapper mcp call . repomapper_file_info --args-file args.json
+'{"path":"src/core/config.ts","fields":["exports","importedBy"]}' | repomapper mcp call . repomapper_file_info --args-stdin
 ```
 
 可选的 `agents` 命令会生成 `AGENTS.md` 操作指南。它不是静态项目地图，只记录面向 agent 的仓库导航和工作规则。
@@ -142,6 +151,8 @@ repomapper agents . --force
 | `--depth <number>`        | `affected` 的反向依赖传播深度，默认 `2`                  |
 | `--json`                  | 为 `scan`、`doctor` 或 `affected` 输出 JSON              |
 | `--args <json>`           | 传给 `mcp call` 的 JSON object 参数                      |
+| `--args-file <file>`      | 从 UTF-8 JSON 文件读取 `mcp call` 参数                   |
+| `--args-stdin`            | 从 stdin 读取 `mcp call` 参数 JSON                       |
 | `--force`                 | `agents` 覆盖已有 `AGENTS.md`                            |
 
 ## 本地开发

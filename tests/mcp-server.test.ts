@@ -97,7 +97,7 @@ describe('MCP server', () => {
 
     const fileInfo = await client.callTool({
       name: 'repomapper_file_info',
-      arguments: { path: 'src/utils.ts' },
+      arguments: { path: 'src/utils.ts', fields: ['callsByExport'] },
     });
     const fileInfoContent = fileInfo.structuredContent as {
       callsByExport?: Record<string, { calledBy?: Array<{ file: string; line?: number }> }>;
