@@ -51,6 +51,8 @@ export type CacheStatus = {
   nextAction: NextAction;
   /** Human-readable explanation, or null when nextAction is 'none'. */
   nextActionMessage: string | null;
+  /** Short user-facing operation hint for agents. */
+  refreshAdvice: string;
 };
 
 interface ProjectCacheOptions {
@@ -234,6 +236,9 @@ export class ProjectCache {
       nextActionMessage: needsRefresh
         ? 'Index has pending changes; call repomapper_refresh before trusting results. 索引存在待处理变更，调用 repomapper_refresh 后再信任结果。'
         : null,
+      refreshAdvice: needsRefresh
+        ? '检测到 watcher 待处理变更；如果下一步依赖最新索引，建议调用 repomapper_refresh。'
+        : '索引当前是新鲜的；普通查询工具会自动刷新，无需手动调用 repomapper_refresh。',
     };
   }
 

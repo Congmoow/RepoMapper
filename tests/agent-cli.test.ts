@@ -1,4 +1,7 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { describe, expect, test } from 'vitest';
@@ -85,4 +88,116 @@ describe('agent-friendly CLI output', () => {
     expect(parsed.suggestions['src/utils']).toEqual(['src/utils.ts']);
     expect(parsed.impacted).toEqual(expect.arrayContaining(['src/service.ts']));
   });
+
+  test('mcp call 可一次性调用本地 MCP 工具并输出结构化 JSON', async () => {
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [
+        ...cliArgs,
+        'mcp',
+        'call',
+        'tests/fixtures/mcp-project',
+        'repomapper_file_info',
+        '--args',
+        '{"path":"src/utils.ts","fields":["exports"]}',
+      ],
+      { cwd: process.cwd() },
+    );
+
+    const parsed = JSON.parse(stdout) as {
+      path: string;
+      exports?: Array<{ name: string }>;
+      imports?: string[];
+    };
+
+    expect(parsed.path).toBe('src/utils.ts');
+    expect(parsed.exports).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'helper' })]),
+    );
+    expect(parsed.imports).toBeUndefined();
+  });
+
+  test('mcp call 支持 args-file，避免 Windows shell JSON 引号问题', async () => {
+    const argsFile = path.join(os.tmpdir(), `repomapper-args-${Date.now()}.json`);
+    await fs.writeFile(argsFile, '{"path":"src/utils.ts","fields":["exports"]}', 'utf8');
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          ...cliArgs,
+          'mcp',
+          'call',
+          'tests/fixtures/mcp-project',
+          'repomapper_file_info',
+          '--args-file',
+          argsFile,
+        ],
+        { cwd: process.cwd() },
+      );
+      const parsed = JSON.parse(stdout) as { path: string; exports?: Array<{ name: string }> };
+
+      expect(parsed.path).toBe('src/utils.ts');
+      expect(parsed.exports).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'helper' })]),
+      );
+    } finally {
+      await fs.unlink(argsFile).catch(() => undefined);
+    }
+  });
+
+  test('mcp call 支持 args-stdin，并在缺参数时给出示例提示', async () => {
+    const { stdout } = await spawnCli(
+      [
+        ...cliArgs,
+        'mcp',
+        'call',
+        'tests/fixtures/mcp-project',
+        'repomapper_file_info',
+        '--args-stdin',
+      ],
+      '{"path":"src/utils.ts","fields":["exports"]}',
+    );
+    const parsed = JSON.parse(stdout) as { path: string; exports?: Array<{ name: string }> };
+
+    expect(parsed.path).toBe('src/utils.ts');
+
+    await expect(
+      execFileAsync(
+        process.execPath,
+        [...cliArgs, 'mcp', 'call', 'tests/fixtures/mcp-project', 'repomapper_file_info'],
+        { cwd: process.cwd() },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        '示例：repomapper mcp call . repomapper_file_info --args-file args.json',
+      ),
+    });
+  });
 });
+
+function spawnCli(args: string[], input: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, { cwd: process.cwd() });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      reject(new Error(`CLI exited with ${code}: ${stderr}`));
+    });
+    child.stdin.end(input);
+  });
+}

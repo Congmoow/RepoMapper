@@ -8,6 +8,8 @@ interface GrepArgs {
   ignoreCase?: boolean | undefined;
   glob?: string | undefined;
   limit?: number | undefined;
+  offset?: number | undefined;
+  contextLines?: number | undefined;
 }
 
 export async function handleGrep(
@@ -18,8 +20,11 @@ export async function handleGrep(
   regex: boolean;
   matches: ContentMatch[];
   count: number;
+  total: number;
+  offset: number;
   truncated: boolean;
   scannedFiles: number;
+  nextOffset: number | null;
   warnings: string[];
 }> {
   await cache.refresh();
@@ -55,8 +60,11 @@ export async function handleGrep(
       regex,
       matches: [],
       count: 0,
+      total: 0,
+      offset: normalizeOffset(args.offset),
       truncated: false,
       scannedFiles: 0,
+      nextOffset: null,
       warnings,
     };
   }
@@ -65,6 +73,8 @@ export async function handleGrep(
     regex,
     ...(args.ignoreCase === undefined ? {} : { ignoreCase: args.ignoreCase }),
     ...(args.limit === undefined ? {} : { limit: args.limit }),
+    ...(args.offset === undefined ? {} : { offset: args.offset }),
+    ...(args.contextLines === undefined ? {} : { contextLines: args.contextLines }),
   });
 
   return {
@@ -72,8 +82,19 @@ export async function handleGrep(
     regex,
     matches: result.matches,
     count: result.matches.length,
+    total: result.total,
+    offset: result.offset,
     truncated: result.truncated,
     scannedFiles: result.scannedFiles,
+    nextOffset: result.nextOffset,
     warnings,
   };
+}
+
+function normalizeOffset(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
 }

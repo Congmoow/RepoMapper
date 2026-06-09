@@ -10,6 +10,12 @@ interface PathBetweenArgs {
 
 const DEFAULT_MAX_PATHS = 5;
 const DEFAULT_MAX_DEPTH = 12;
+type PathBetweenReason =
+  | 'connected'
+  | 'same-file'
+  | 'missing'
+  | 'forward-path-only'
+  | 'not-connected';
 
 export async function handlePathBetween(
   cache: ProjectCache,
@@ -21,6 +27,11 @@ export async function handlePathBetween(
   shortestLength: number | null;
   paths: string[][];
   truncated: boolean;
+  direction: 'reverse-dependency';
+  queryInterpretedAs: 'change-propagation';
+  reason: PathBetweenReason;
+  directionHint: string;
+  forwardDependencyPath?: string[];
   missing: string[];
   suggestions: Record<string, string[]>;
   warnings: string[];
@@ -57,6 +68,10 @@ export async function handlePathBetween(
       shortestLength: from === to && missingPaths.length === 0 ? 0 : null,
       paths: from === to && missingPaths.length === 0 ? [[from]] : [],
       truncated: false,
+      direction: 'reverse-dependency',
+      queryInterpretedAs: 'change-propagation',
+      reason: missingPaths.length > 0 ? 'missing' : 'same-file',
+      directionHint: buildDirectionHint(),
       missing: missingPaths,
       suggestions,
       warnings,
@@ -66,6 +81,15 @@ export async function handlePathBetween(
   const paths = findShortestPaths(graph.importedBy, from, to, maxDepth, maxPaths + 1);
   const truncated = paths.length > maxPaths;
   const pagedPaths = paths.slice(0, maxPaths);
+  const forwardDependencyPath =
+    paths.length === 0
+      ? findShortestPaths(graph.dependsOn, from, to, maxDepth, 1)[0]
+      : undefined;
+  const directionWarnings = forwardDependencyPath
+    ? [
+        `未找到从 ${from} 到 ${to} 的反向依赖传播链，但存在正向依赖路径；如果你想问“入口依赖了什么”，请使用 repomapper_imports 或正向依赖语义。`,
+      ]
+    : [];
 
   return {
     from,
@@ -74,9 +98,14 @@ export async function handlePathBetween(
     shortestLength: paths.length > 0 ? paths[0]!.length - 1 : null,
     paths: pagedPaths,
     truncated,
+    direction: 'reverse-dependency',
+    queryInterpretedAs: 'change-propagation',
+    reason: paths.length > 0 ? 'connected' : forwardDependencyPath ? 'forward-path-only' : 'not-connected',
+    directionHint: buildDirectionHint(),
+    ...(forwardDependencyPath === undefined ? {} : { forwardDependencyPath }),
     missing: missingPaths,
     suggestions,
-    warnings,
+    warnings: [...warnings, ...directionWarnings],
   };
 }
 
@@ -133,4 +162,8 @@ function normalizePositive(value: number | undefined, fallback: number): number 
   }
 
   return Math.floor(value);
+}
+
+function buildDirectionHint(): string {
+  return '此工具沿反向依赖图查找“from 的变更如何传播到 to”。如果你要看 from import 了什么，请用 repomapper_imports；如果结果未连通但 forwardDependencyPath 存在，说明两者存在正向依赖路径而非变更传播路径。';
 }
